@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- android/app/src/main/res/values/colors.xml -->
+<resources>
+    <!-- TeleCRM deep-violet background for adaptive launcher icon -->
+    <color name="ic_launcher_background">#101820</color>
+</resources>

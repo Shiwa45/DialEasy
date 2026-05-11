@@ -1,0 +1,458 @@
+{% extends 'base.html' %}
+
+{% block title %}Create New Agent - TeleCRM{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1><i class="fas fa-user-plus"></i> Create New Agent</h1>
+            <p>Add a new sales agent to your team</p>
+        </div>
+        <div>
+            <a href="{% url 'agents:agent_list' %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Agents
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Create Agent Form -->
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-user-tie"></i> Agent Information</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" id="createAgentForm">
+                    {% csrf_token %}
+                    
+                    <!-- Basic Information -->
+                    <div class="row">
+                        <div class="col-12">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-id-card"></i> Basic Information
+                            </h6>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="username" class="form-label">Username <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-user"></i>
+                                </span>
+                                <input type="text" class="form-control" id="username" name="username" 
+                                       placeholder="agent123" required>
+                            </div>
+                            <small class="form-text text-muted">Username for login (letters, numbers, and underscores only)</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="password" class="form-label">Password <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-lock"></i>
+                                </span>
+                                <input type="password" class="form-control" id="password" name="password" 
+                                       placeholder="Enter password" required>
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword()">
+                                    <i class="fas fa-eye" id="passwordToggle"></i>
+                                </button>
+                            </div>
+                            <small class="form-text text-muted">Minimum 8 characters</small>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="first_name" class="form-label">First Name</label>
+                            <input type="text" class="form-control" id="first_name" name="first_name" 
+                                   placeholder="John">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="last_name" class="form-label">Last Name</label>
+                            <input type="text" class="form-control" id="last_name" name="last_name" 
+                                   placeholder="Doe">
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label for="email" class="form-label">Email Address</label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-envelope"></i>
+                                </span>
+                                <input type="email" class="form-control" id="email" name="email" 
+                                       placeholder="agent@company.com">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="phone" class="form-label">Phone Number</label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-phone"></i>
+                                </span>
+                                <input type="tel" class="form-control" id="phone" name="phone" 
+                                       placeholder="+1234567890">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Professional Information -->
+                    <div class="row">
+                        <div class="col-12">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-briefcase"></i> Professional Information
+                            </h6>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="department" class="form-label">Department</label>
+                            <select class="form-select" id="department" name="department">
+                                <option value="">Select Department</option>
+                                <option value="Sales">Sales</option>
+                                <option value="Telemarketing">Telemarketing</option>
+                                <option value="Lead Generation">Lead Generation</option>
+                                <option value="Customer Success">Customer Success</option>
+                                <option value="Business Development">Business Development</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="hire_date" class="form-label">Hire Date</label>
+                            <input type="date" class="form-control" id="hire_date" name="hire_date">
+                        </div>
+                    </div>
+                    
+                    <!-- Performance Targets -->
+                    <div class="row">
+                        <div class="col-12">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-target"></i> Performance Targets
+                            </h6>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label for="target_calls_per_day" class="form-label">Daily Call Target</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="target_calls_per_day" 
+                                       name="target_calls_per_day" value="50" min="1" max="200">
+                                <span class="input-group-text">calls/day</span>
+                            </div>
+                            <small class="form-text text-muted">Recommended: 30-80 calls per day</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="target_conversions_per_month" class="form-label">Monthly Conversion Target</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="target_conversions_per_month" 
+                                       name="target_conversions_per_month" value="10" min="1" max="100">
+                                <span class="input-group-text">conversions/month</span>
+                            </div>
+                            <small class="form-text text-muted">Recommended: 5-25 conversions per month</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Form Actions -->
+                    <div class="row">
+                        <div class="col-12">
+                            <hr>
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <button type="button" class="btn btn-outline-info" onclick="generatePassword()">
+                                        <i class="fas fa-key"></i> Generate Password
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="previewAgent()">
+                                        <i class="fas fa-eye"></i> Preview
+                                    </button>
+                                </div>
+                                <div>
+                                    <a href="{% url 'agents:agent_list' %}" class="btn btn-secondary me-2">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </a>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-plus"></i> Create Agent
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Helper Card -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-lightbulb"></i> Tips</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <h6 class="text-success">Username Guidelines</h6>
+                    <ul class="list-unstyled small">
+                        <li><i class="fas fa-check text-success"></i> Use letters, numbers, underscores</li>
+                        <li><i class="fas fa-check text-success"></i> Make it memorable but professional</li>
+                        <li><i class="fas fa-check text-success"></i> Example: john_doe, agent123</li>
+                    </ul>
+                </div>
+                
+                <div class="mb-3">
+                    <h6 class="text-info">Password Security</h6>
+                    <ul class="list-unstyled small">
+                        <li><i class="fas fa-shield-alt text-info"></i> Minimum 8 characters</li>
+                        <li><i class="fas fa-shield-alt text-info"></i> Mix of letters and numbers</li>
+                        <li><i class="fas fa-shield-alt text-info"></i> Use special characters</li>
+                    </ul>
+                </div>
+                
+                <div class="mb-3">
+                    <h6 class="text-warning">Performance Targets</h6>
+                    <ul class="list-unstyled small">
+                        <li><i class="fas fa-target text-warning"></i> Set realistic daily call goals</li>
+                        <li><i class="fas fa-target text-warning"></i> Consider experience level</li>
+                        <li><i class="fas fa-target text-warning"></i> Can be adjusted later</li>
+                    </ul>
+                </div>
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Note:</strong> The agent will receive login credentials via email if an email address is provided.
+                </div>
+            </div>
+        </div>
+        
+        <!-- Department Statistics -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Team Distribution</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between">
+                        <small>Sales</small>
+                        <small>45%</small>
+                    </div>
+                    <div class="progress mb-2" style="height: 6px;">
+                        <div class="progress-bar bg-primary" style="width: 45%"></div>
+                    </div>
+                </div>
+                
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between">
+                        <small>Telemarketing</small>
+                        <small>30%</small>
+                    </div>
+                    <div class="progress mb-2" style="height: 6px;">
+                        <div class="progress-bar bg-success" style="width: 30%"></div>
+                    </div>
+                </div>
+                
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between">
+                        <small>Lead Generation</small>
+                        <small>15%</small>
+                    </div>
+                    <div class="progress mb-2" style="height: 6px;">
+                        <div class="progress-bar bg-warning" style="width: 15%"></div>
+                    </div>
+                </div>
+                
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between">
+                        <small>Other</small>
+                        <small>10%</small>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-info" style="width: 10%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Agent Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center mb-3">
+                    <div class="user-avatar mx-auto mb-2" style="width: 80px; height: 80px; font-size: 2rem;" id="previewAvatar">
+                        ?
+                    </div>
+                    <h5 id="previewName">Agent Name</h5>
+                    <p class="text-muted" id="previewUsername">@username</p>
+                </div>
+                
+                <div class="row text-center">
+                    <div class="col-6">
+                        <strong class="text-primary" id="previewCalls">50</strong>
+                        <br><small class="text-muted">Daily Target</small>
+                    </div>
+                    <div class="col-6">
+                        <strong class="text-success" id="previewConversions">10</strong>
+                        <br><small class="text-muted">Monthly Target</small>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="row">
+                    <div class="col-6"><strong>Email:</strong></div>
+                    <div class="col-6" id="previewEmail">-</div>
+                </div>
+                <div class="row">
+                    <div class="col-6"><strong>Phone:</strong></div>
+                    <div class="col-6" id="previewPhone">-</div>
+                </div>
+                <div class="row">
+                    <div class="col-6"><strong>Department:</strong></div>
+                    <div class="col-6" id="previewDepartment">-</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="submitForm()">
+                    <i class="fas fa-plus"></i> Create Agent
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Set today's date as default hire date
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('hire_date').value = today;
+});
+
+// Password visibility toggle
+function togglePassword() {
+    const passwordField = document.getElementById('password');
+    const toggleIcon = document.getElementById('passwordToggle');
+    
+    if (passwordField.type === 'password') {
+        passwordField.type = 'text';
+        toggleIcon.className = 'fas fa-eye-slash';
+    } else {
+        passwordField.type = 'password';
+        toggleIcon.className = 'fas fa-eye';
+    }
+}
+
+// Generate random password
+function generatePassword() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let password = '';
+    
+    for (let i = 0; i < 12; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    document.getElementById('password').value = password;
+    document.getElementById('password').type = 'text';
+    document.getElementById('passwordToggle').className = 'fas fa-eye-slash';
+    
+    // Show notification
+    const toast = document.createElement('div');
+    toast.className = 'toast align-items-center text-white bg-success border-0 position-fixed top-0 end-0 m-3';
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                <i class="fas fa-check"></i> Password generated successfully!
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    
+    setTimeout(() => toast.remove(), 5000);
+}
+
+// Preview agent
+function previewAgent() {
+    const firstName = document.getElementById('first_name').value;
+    const lastName = document.getElementById('last_name').value;
+    const username = document.getElementById('username').value;
+    const email = document.getElementById('email').value;
+    const phone = document.getElementById('phone').value;
+    const department = document.getElementById('department').value;
+    const callTarget = document.getElementById('target_calls_per_day').value;
+    const conversionTarget = document.getElementById('target_conversions_per_month').value;
+    
+    // Update preview modal
+    const fullName = `${firstName} ${lastName}`.trim() || 'New Agent';
+    const avatar = fullName.charAt(0).toUpperCase() || 'A';
+    
+    document.getElementById('previewAvatar').textContent = avatar;
+    document.getElementById('previewName').textContent = fullName;
+    document.getElementById('previewUsername').textContent = `@${username || 'username'}`;
+    document.getElementById('previewEmail').textContent = email || '-';
+    document.getElementById('previewPhone').textContent = phone || '-';
+    document.getElementById('previewDepartment').textContent = department || '-';
+    document.getElementById('previewCalls').textContent = callTarget;
+    document.getElementById('previewConversions').textContent = conversionTarget;
+    
+    new bootstrap.Modal(document.getElementById('previewModal')).show();
+}
+
+// Submit form from modal
+function submitForm() {
+    document.getElementById('createAgentForm').submit();
+}
+
+// Form validation
+document.getElementById('createAgentForm').addEventListener('submit', function(e) {
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    
+    if (username.length < 3) {
+        e.preventDefault();
+        alert('Username must be at least 3 characters long');
+        return;
+    }
+    
+    if (password.length < 8) {
+        e.preventDefault();
+        alert('Password must be at least 8 characters long');
+        return;
+    }
+    
+    // Show loading state
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating Agent...';
+    submitBtn.disabled = true;
+});
+
+// Username validation
+document.getElementById('username').addEventListener('input', function() {
+    const username = this.value;
+    const validPattern = /^[a-zA-Z0-9_]+$/;
+    
+    if (username && !validPattern.test(username)) {
+        this.setCustomValidity('Username can only contain letters, numbers, and underscores');
+    } else {
+        this.setCustomValidity('');
+    }
+});
+</script>
+{% endblock %}

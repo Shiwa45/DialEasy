@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Agent Time Tracking – TeleCRM{% endblock %}
+
+{% block extra_css %}
+<style>
+  .efficiency-bar { height: 8px; border-radius: 4px; background: #e9ecef; overflow: hidden; }
+  .efficiency-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg,#27ae60,#2ecc71); transition: width .6s ease; }
+  .live-badge { display:inline-block; width:8px; height:8px; border-radius:50%; background:#27ae60; animation:pulse 1.5s infinite; margin-right:5px; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .time-cell { font-family: 'Courier New', monospace; font-size: 0.88rem; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div>
+    <h1><i class="fas fa-stopwatch me-2 text-primary"></i>Agent Time Tracking</h1>
+    <p class="mb-0 text-muted">Monitor how agents spend their dialer session time</p>
+  </div>
+  <a href="{% url 'agents:agent_list' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="fas fa-arrow-left me-1"></i> Back to Agents
+  </a>
+</div>
+
+<!-- Date filter -->
+<div class="card mb-4">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-center">
+      <div class="col-auto">
+        <label class="form-label mb-0 fw-semibold">Date</label>
+      </div>
+      <div class="col-auto">
+        <input type="date" name="date" class="form-control form-control-sm" value="{{ selected_date|date:'Y-m-d' }}">
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="fas fa-filter me-1"></i>Filter
+        </button>
+      </div>
+      <div class="col-auto ms-auto text-muted small">
+        Showing data for <strong>{{ selected_date|date:"D, d M Y" }}</strong>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Summary table -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="fas fa-table me-2"></i>Session Summary</span>
+    <span class="badge bg-primary">{{ summary_rows|length }} agent(s)</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th class="text-center">Status</th>
+            <th class="text-center">Sessions</th>
+            <th class="text-center">Total Active</th>
+            <th class="text-center text-success">Talk Time</th>
+            <th class="text-center text-warning">Disp. Time</th>
+            <th class="text-center text-danger">Idle Time</th>
+            <th class="text-center">Calls Made</th>
+            <th>Efficiency</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in summary_rows %}
+          <tr>
+            <td>
+              <strong>{{ row.agent.get_full_name|default:row.agent.username }}</strong><br>
+              <small class="text-muted">{{ row.agent.username }}</small>
+            </td>
+            <td class="text-center">
+              {% if row.is_active %}
+                <span><span class="live-badge"></span>Live</span>
+              {% else %}
+                <span class="text-muted">Offline</span>
+              {% endif %}
+            </td>
+            <td class="text-center">{{ row.session_count }}</td>
+            <td class="text-center time-cell">{{ row.total_session }}</td>
+            <td class="text-center time-cell text-success">{{ row.total_call }}</td>
+            <td class="text-center time-cell text-warning">{{ row.total_disposition }}</td>
+            <td class="text-center time-cell text-danger">{{ row.total_idle }}</td>
+            <td class="text-center fw-bold">{{ row.total_calls_made }}</td>
+            <td style="min-width:120px">
+              <div class="d-flex align-items-center gap-2">
+                <div class="efficiency-bar flex-grow-1">
+                  <div class="efficiency-fill" style="width:{{ row.efficiency_pct }}%"></div>
+                </div>
+                <small class="fw-semibold" style="width:38px">{{ row.efficiency_pct }}%</small>
+              </div>
+            </td>
+            <td>
+              <a href="{% url 'agents:agent_activity_detail' row.agent.id %}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-chart-line"></i>
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="10" class="text-center py-4 text-muted">
+              <i class="fas fa-clock fa-2x mb-2 d-block"></i>
+              No session data for {{ selected_date|date:"d M Y" }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<p class="text-muted small mt-3">
+  <i class="fas fa-info-circle me-1"></i>
+  <strong>Talk Time</strong>: time agent was connected on a call &nbsp;|&nbsp;
+  <strong>Disp. Time</strong>: time between call end and disposition submit &nbsp;|&nbsp;
+  <strong>Idle Time</strong>: Active - Talk - Disposition &nbsp;|&nbsp;
+  <strong>Efficiency</strong>: Talk ÷ Active × 100
+</p>
+{% endblock %}

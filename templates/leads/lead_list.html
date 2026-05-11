@@ -1,0 +1,390 @@
+{% extends 'base.html' %}
+
+{% block title %}All Leads - TeleCRM{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h1><i class="fas fa-users"></i> All Leads</h1>
+            <p>Manage and track all your leads in one place</p>
+        </div>
+        <div>
+            <a href="{% url 'leads:upload_leads' %}" class="btn btn-primary">
+                <i class="fas fa-upload"></i> Upload Leads
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Filters and Search -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label for="search" class="form-label">Search</label>
+                <input type="text" class="form-control" id="search" name="search" 
+                       value="{{ search_query }}" placeholder="Search by name, phone, email...">
+            </div>
+            <div class="col-md-3">
+                <label for="status" class="form-label">Status</label>
+                <select class="form-select" id="status" name="status">
+                    <option value="">All Status</option>
+                    {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="agent" class="form-label">Agent</label>
+                <select class="form-select" id="agent" name="agent">
+                    <option value="">All Agents</option>
+                    {% for agent in agents %}
+                        <option value="{{ agent.id }}" {% if agent_filter == agent.id|stringformat:"s" %}selected{% endif %}>
+                            {{ agent.first_name|default:agent.username }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Filter
+                    </button>
+                    <a href="{% url 'leads:lead_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times"></i> Clear
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Leads Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="fas fa-list"></i> Leads 
+            <span class="badge bg-secondary">{{ page_obj.paginator.count }}</span>
+        </h5>
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="selectAll()">
+                <i class="fas fa-check-square"></i> Select All
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="assignSelected()">
+                <i class="fas fa-user-plus"></i> Assign Selected
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {% if page_obj %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th width="50">
+                                <input type="checkbox" id="selectAllCheckbox" onchange="toggleAll(this)">
+                            </th>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th>Company</th>
+                            <th>Status</th>
+                            <th>Agent</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lead in page_obj %}
+                            <tr>
+                                <td>
+                                    <input type="checkbox" class="lead-checkbox" value="{{ lead.id }}">
+                                </td>
+                                <td>
+                                    <strong>{{ lead.name }}</strong>
+                                    {% if lead.call_count > 0 %}
+                                        <br><small class="text-muted">
+                                            <i class="fas fa-phone"></i> {{ lead.call_count }} call{{ lead.call_count|pluralize }}
+                                        </small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="tel:{{ lead.phone }}" class="text-decoration-none">
+                                        {{ lead.phone }}
+                                    </a>
+                                </td>
+                                <td>
+                                    {% if lead.email %}
+                                        <a href="mailto:{{ lead.email }}" class="text-decoration-none">
+                                            {{ lead.email }}
+                                        </a>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ lead.company|default:"-" }}</td>
+                                <td>
+                                    <span class="badge bg-{% if lead.status == 'new' %}primary{% elif lead.status == 'interested' %}success{% elif lead.status == 'not_interested' %}danger{% elif lead.status == 'converted' %}success{% else %}warning{% endif %}">
+                                        {{ lead.get_status_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if lead.assigned_agent %}
+                                        <div class="d-flex align-items-center">
+                                            <div class="user-avatar me-2" style="width: 30px; height: 30px; font-size: 0.8rem;">
+                                                {{ lead.assigned_agent.first_name|first|default:lead.assigned_agent.username|first|upper }}
+                                            </div>
+                                            {{ lead.assigned_agent.first_name|default:lead.assigned_agent.username }}
+                                        </div>
+                                    {% else %}
+                                        <span class="text-muted">Unassigned</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small class="text-muted">{{ lead.created_at|date:"M d, Y" }}</small>
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <a href="{% url 'leads:lead_detail' lead.id %}" 
+                                           class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        <button type="button" class="btn btn-sm btn-outline-success" 
+                                                onclick="quickAssign({{ lead.id }})">
+                                            <i class="fas fa-user-plus"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            {% if page_obj.has_other_pages %}
+                <div class="card-footer">
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination justify-content-center mb-0">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if agent_filter %}&agent={{ agent_filter }}{% endif %}">
+                                        <i class="fas fa-angle-double-left"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if agent_filter %}&agent={{ agent_filter }}{% endif %}">
+                                        <i class="fas fa-angle-left"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                            
+                            {% for num in page_obj.paginator.page_range %}
+                                {% if page_obj.number == num %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ num }}</span>
+                                    </li>
+                                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if agent_filter %}&agent={{ agent_filter }}{% endif %}">
+                                            {{ num }}
+                                        </a>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if agent_filter %}&agent={{ agent_filter }}{% endif %}">
+                                        <i class="fas fa-angle-right"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if agent_filter %}&agent={{ agent_filter }}{% endif %}">
+                                        <i class="fas fa-angle-double-right"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">No leads found</h5>
+                <p class="text-muted">Try adjusting your search criteria or upload some leads.</p>
+                <a href="{% url 'leads:upload_leads' %}" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> Upload Leads
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Quick Assign Modal -->
+<div class="modal fade" id="quickAssignModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Quick Assign Lead</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="quickAssignForm">
+                    <input type="hidden" id="assignLeadId" name="lead_id">
+                    <div class="mb-3">
+                        <label for="assignAgent" class="form-label">Select Agent</label>
+                        <select class="form-select" id="assignAgent" name="agent_id" required>
+                            <option value="">Choose an agent...</option>
+                            {% for agent in agents %}
+                                <option value="{{ agent.id }}">
+                                    {{ agent.first_name|default:agent.username }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="submitQuickAssign()">
+                    <i class="fas fa-user-plus"></i> Assign Lead
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Assign Modal -->
+<div class="modal fade" id="bulkAssignModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Bulk Assign Leads</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="bulkAssignForm" action="{% url 'leads:bulk_assign_leads' %}" method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Selected Leads</label>
+                        <div id="selectedLeadsCount" class="text-muted">No leads selected</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="bulkAssignAgent" class="form-label">Select Agent</label>
+                        <select class="form-select" id="bulkAssignAgent" name="agent_id" required>
+                            <option value="">Choose an agent...</option>
+                            {% for agent in agents %}
+                                <option value="{{ agent.id }}">
+                                    {{ agent.first_name|default:agent.username }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div id="bulkAssignLeadIds"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="bulkAssignForm" class="btn btn-primary">Assign Selected</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleAll(checkbox) {
+    const leadCheckboxes = document.querySelectorAll('.lead-checkbox');
+    leadCheckboxes.forEach(cb => cb.checked = checkbox.checked);
+    updateSelectedCount();
+}
+
+function selectAll() {
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    selectAllCheckbox.checked = true;
+    toggleAll(selectAllCheckbox);
+}
+
+function updateSelectedCount() {
+    const selected = document.querySelectorAll('.lead-checkbox:checked');
+    const count = selected.length;
+    const countElement = document.getElementById('selectedLeadsCount');
+    if (countElement) {
+        countElement.textContent = count === 0 ? 'No leads selected' : `${count} lead${count !== 1 ? 's' : ''} selected`;
+    }
+}
+
+function quickAssign(leadId) {
+    document.getElementById('assignLeadId').value = leadId;
+    new bootstrap.Modal(document.getElementById('quickAssignModal')).show();
+}
+
+function submitQuickAssign() {
+    const form = document.getElementById('quickAssignForm');
+    const leadId = document.getElementById('assignLeadId').value;
+    const agentId = document.getElementById('assignAgent').value;
+    
+    if (!agentId) {
+        alert('Please select an agent');
+        return;
+    }
+    
+    // Submit via fetch
+    const formData = new FormData();
+    formData.append('lead_ids', leadId);
+    formData.append('agent_id', agentId);
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    
+    fetch('{% url "leads:bulk_assign_leads" %}', {
+        method: 'POST',
+        body: formData
+    }).then(response => {
+        if (response.ok) {
+            location.reload();
+        } else {
+            alert('Error assigning lead');
+        }
+    });
+}
+
+function assignSelected() {
+    const selected = document.querySelectorAll('.lead-checkbox:checked');
+    if (selected.length === 0) {
+        alert('Please select at least one lead');
+        return;
+    }
+    
+    // Clear previous lead IDs
+    const leadIdsContainer = document.getElementById('bulkAssignLeadIds');
+    leadIdsContainer.innerHTML = '';
+    
+    // Add selected lead IDs to form
+    selected.forEach(checkbox => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'lead_ids';
+        input.value = checkbox.value;
+        leadIdsContainer.appendChild(input);
+    });
+    
+    updateSelectedCount();
+    new bootstrap.Modal(document.getElementById('bulkAssignModal')).show();
+}
+
+// Update selected count when checkboxes change
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('lead-checkbox')) {
+        updateSelectedCount();
+    }
+});
+</script>
+{% endblock %}

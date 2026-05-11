@@ -1,0 +1,28 @@
+# Django
+*.py[cod]
+__pycache__/
+db.sqlite3
+media/
+local_settings.py
+.env
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+telecrm_app/build/
+telecrm_app/.dart_tool/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.hprof

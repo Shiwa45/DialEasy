@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}{{ agent.get_full_name|default:agent.username }} – Activity – TeleCRM{% endblock %}
+
+{% block extra_css %}
+<style>
+  .time-cell { font-family: 'Courier New', monospace; font-size: 0.88rem; font-weight: 600; }
+  .event-dot { width:10px; height:10px; border-radius:50%; display:inline-block; flex-shrink:0; }
+  .dot-call_started      { background:#27ae60; }
+  .dot-call_ended        { background:#2ecc71; }
+  .dot-disposition_started  { background:#e67e22; }
+  .dot-disposition_submitted{ background:#f39c12; }
+  .dot-session_start     { background:#3498db; }
+  .dot-session_end       { background:#95a5a6; }
+  .timeline-line { border-left: 2px solid #dee2e6; padding-left: 14px; margin-left: 4px; }
+  .session-card { border-left: 4px solid #3498db; }
+  .session-card.ended { border-left-color: #95a5a6; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div>
+    <h1>
+      <i class="fas fa-stopwatch me-2 text-primary"></i>
+      {{ agent.get_full_name|default:agent.username }}
+      <small class="text-muted fs-5">Activity Timeline</small>
+    </h1>
+    <p class="mb-0 text-muted">{{ start_date|date:"d M Y" }} – {{ end_date|date:"d M Y" }}</p>
+  </div>
+  <a href="{% url 'agents:agent_activity_list' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="fas fa-arrow-left me-1"></i> All Agents
+  </a>
+</div>
+
+<!-- Date range filter -->
+<div class="card mb-4">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-center">
+      <div class="col-auto"><label class="form-label mb-0 fw-semibold">From</label></div>
+      <div class="col-auto">
+        <input type="date" name="start" class="form-control form-control-sm" value="{{ start_date|date:'Y-m-d' }}">
+      </div>
+      <div class="col-auto"><label class="form-label mb-0 fw-semibold">To</label></div>
+      <div class="col-auto">
+        <input type="date" name="end" class="form-control form-control-sm" value="{{ end_date|date:'Y-m-d' }}">
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter me-1"></i>Filter</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Daily bar chart -->
+{% if daily_data %}
+<div class="card mb-4">
+  <div class="card-header"><i class="fas fa-chart-bar me-2"></i>Daily Breakdown (seconds)</div>
+  <div class="card-body">
+    <canvas id="dailyChart" height="90"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<!-- Sessions list -->
+<h5 class="mb-3 fw-bold"><i class="fas fa-list me-2"></i>Sessions ({{ sessions|length }})</h5>
+
+{% for session in sessions %}
+<div class="card mb-3 session-card {% if session.session_end %}ended{% endif %}">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <strong>{{ session.session_start|date:"D d M Y, H:i:s" }}</strong>
+      {% if not session.session_end %}
+        <span class="badge bg-success ms-2">● Live</span>
+      {% else %}
+        <span class="badge bg-secondary ms-2">Ended {{ session.session_end|date:"H:i:s" }}</span>
+      {% endif %}
+    </div>
+    <div class="d-flex gap-3 small">
+      <span><i class="fas fa-clock text-muted me-1"></i><strong>Duration:</strong>
+        <span class="time-cell">{{ session.session_duration_display }}</span>
+      </span>
+      <span class="text-success"><i class="fas fa-phone me-1"></i><strong>Talk:</strong>
+        <span class="time-cell">{{ session.talk_time_display }}</span>
+      </span>
+      <span class="text-warning"><i class="fas fa-clipboard me-1"></i><strong>Disp.:</strong>
+        <span class="time-cell">{{ session.disposition_time_display }}</span>
+      </span>
+      <span class="text-danger"><i class="fas fa-coffee me-1"></i><strong>Idle:</strong>
+        <span class="time-cell">{{ session.idle_time_display }}</span>
+      </span>
+      <span><i class="fas fa-phone-alt text-primary me-1"></i>
+        <strong>{{ session.total_calls_made }}</strong> calls
+      </span>
+    </div>
+  </div>
+
+  {% if session.events.all %}
+  <div class="card-body py-2">
+    <div class="timeline-line">
+      {% for event in session.events.all %}
+      <div class="d-flex align-items-start gap-2 mb-1">
+        <span class="event-dot dot-{{ event.event_type }} mt-1"></span>
+        <div class="small">
+          <span class="text-muted" style="min-width:70px;display:inline-block;">
+            {{ event.timestamp|date:"H:i:s" }}
+          </span>
+          <strong>{{ event.get_event_type_display }}</strong>
+          {% if event.lead %}
+            – <span class="text-muted">{{ event.lead.name }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% empty %}
+<div class="card">
+  <div class="card-body text-center text-muted py-5">
+    <i class="fas fa-clock fa-3x mb-3 d-block"></i>
+    No sessions in this date range
+  </div>
+</div>
+{% endfor %}
+
+<!-- Legend -->
+<div class="card mt-3">
+  <div class="card-body py-2 d-flex gap-4 flex-wrap small text-muted">
+    <span><span class="event-dot dot-session_start me-1"></span>Session Start</span>
+    <span><span class="event-dot dot-call_started me-1"></span>Call Started</span>
+    <span><span class="event-dot dot-call_ended me-1"></span>Call Ended</span>
+    <span><span class="event-dot dot-disposition_started me-1"></span>Disposition Opened</span>
+    <span><span class="event-dot dot-disposition_submitted me-1"></span>Disposition Saved</span>
+    <span><span class="event-dot dot-session_end me-1"></span>Session Ended</span>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if daily_data %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const labels = [{% for d in daily_data %}"{{ d.date }}"{% if not forloop.last %},{% endif %}{% endfor %}];
+const callSecs  = [{% for d in daily_data %}{{ d.call_secs }}{% if not forloop.last %},{% endif %}{% endfor %}];
+const dispSecs  = [{% for d in daily_data %}{{ d.disp_secs }}{% if not forloop.last %},{% endif %}{% endfor %}];
+const idleSecs  = [{% for d in daily_data %}{{ d.session_secs|add:0 }}{% if not forloop.last %},{% endif %}{% endfor %}];
+
+new Chart(document.getElementById('dailyChart'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [
+      { label: 'Talk Time (s)',        data: callSecs, backgroundColor: '#27ae60' },
+      { label: 'Disposition Time (s)', data: dispSecs, backgroundColor: '#e67e22' },
+      { label: 'Total Active (s)',     data: idleSecs, backgroundColor: '#bdc3c7', type: 'line', fill: false, tension: 0.3, borderColor:'#3498db', backgroundColor:'transparent', pointBackgroundColor:'#3498db' },
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'bottom' } },
+    scales: { x: { stacked: false }, y: { beginAtZero: true, title: { display: true, text: 'Seconds' } } }
+  }
+});
+</script>
+{% endif %}
+{% endblock %}
