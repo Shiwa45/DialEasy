@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+{% block title %}{{ lead.name }} – DialEasy{% endblock %}
+{% block page_title %}Lead Detail{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'leads:lead_list' %}" class="btn-secondary">← Back to Leads</a>
+{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 340px;gap:20px;">
+
+  <!-- Left: Lead Info -->
+  <div>
+    <!-- Lead Card -->
+    <div class="card" style="margin-bottom:18px;">
+      <div style="display:flex;align-items:center;gap:18px;margin-bottom:20px;">
+        <div class="avatar" style="width:60px;height:60px;font-size:20px;background:var(--orange-lt);color:var(--orange);">
+          {{ lead.name|first|upper }}
+        </div>
+        <div style="flex:1;">
+          <h2 style="font-size:22px;font-weight:800;">{{ lead.name }}</h2>
+          <div style="color:var(--gray-400);font-size:14px;margin-top:4px;">{{ lead.company|default:"No company" }}</div>
+          <span class="badge {% if lead.status == 'converted' %}badge-green{% elif lead.status == 'contacted' %}badge-blue{% elif lead.status == 'new' %}badge-orange{% elif lead.status == 'not_interested' %}badge-red{% else %}badge-gray{% endif %}" style="margin-top:8px;">
+            {{ lead.get_status_display }}
+          </span>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <div class="form-label">Phone</div>
+          <div style="font-size:15px;font-weight:600;">{{ lead.phone }}</div>
+        </div>
+        <div>
+          <div class="form-label">Email</div>
+          <div style="font-size:15px;font-weight:600;">{{ lead.email|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="form-label">Source</div>
+          <div style="font-size:15px;font-weight:600;">{{ lead.source|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="form-label">Assigned Agent</div>
+          <div style="font-size:15px;font-weight:600;">{{ lead.assigned_agent.get_full_name|default:"Unassigned" }}</div>
+        </div>
+        <div>
+          <div class="form-label">Created</div>
+          <div style="font-size:14px;color:var(--gray-400);">{{ lead.created_at|date:"M d, Y – H:i" }}</div>
+        </div>
+        <div>
+          <div class="form-label">Last Updated</div>
+          <div style="font-size:14px;color:var(--gray-400);">{{ lead.updated_at|date:"M d, Y – H:i" }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Call Logs -->
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-header">
+        <div class="card-title">Call History</div>
+        <span class="badge badge-blue">{{ call_logs.count }} calls</span>
+      </div>
+      {% if call_logs %}
+      <div class="timeline">
+        {% for call in call_logs %}
+        <div class="timeline-item">
+          <div class="timeline-dot {% cycle 'orange' 'green' 'blue' %}"></div>
+          <div class="timeline-time">{{ call.call_date|date:"M d, Y – H:i" }}</div>
+          <div class="timeline-text">
+            {{ call.disposition|default:"Call made" }}
+            <span class="badge badge-gray" style="margin-left:8px;">{{ call.duration|default:0 }}s</span>
+          </div>
+          <div class="timeline-sub">By {{ call.agent.get_full_name|default:call.agent.username }}{% if call.notes %} · {{ call.notes|truncatewords:12 }}{% endif %}</div>
+          {% if call.recording %}
+          <div style="margin-top:10px;padding:10px;background:var(--gray-100);border-radius:8px;display:flex;align-items:center;gap:12px;">
+            <i class="fas fa-microphone" style="color:var(--orange);"></i>
+            <audio controls style="height:30px;">
+              <source src="{{ call.recording.url }}" type="audio/mpeg">
+              Your browser does not support the audio element.
+            </audio>
+            <a href="{{ call.recording.url }}" download class="btn-secondary" style="padding:4px 8px;font-size:12px;">
+              <i class="fas fa-download"></i>
+            </a>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state" style="padding:24px 0;">
+        <p>No calls logged yet.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Right: Follow-ups -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Follow-ups</div>
+        <span class="badge badge-orange">{{ follow_ups.count }}</span>
+      </div>
+      {% for fu in follow_ups %}
+      <div style="padding:12px 0;border-bottom:1px solid var(--gray-200);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:13px;font-weight:600;">{{ fu.follow_up_date|date:"M d, Y" }}</span>
+          <span class="badge {% if fu.is_completed %}badge-green{% elif fu.follow_up_date < today %}badge-red{% else %}badge-orange{% endif %}">
+            {% if fu.is_completed %}Done{% elif fu.follow_up_date < today %}Overdue{% else %}Pending{% endif %}
+          </span>
+        </div>
+        <div style="font-size:12px;color:var(--gray-400);">{{ fu.notes|default:"No notes"|truncatewords:15 }}</div>
+        <div style="font-size:12px;color:var(--gray-400);margin-top:4px;">By {{ fu.agent.get_full_name|default:fu.agent.username }}</div>
+      </div>
+      {% empty %}
+      <div class="empty-state" style="padding:24px 0;">
+        <p>No follow-ups scheduled.</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

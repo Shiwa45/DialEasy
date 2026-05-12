@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+{% block title %}{{ agent.get_full_name }} – DialEasy{% endblock %}
+{% block page_title %}Agent Profile{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'agents:update_agent' agent.id %}" class="btn-secondary">Edit Agent</a>
+<a href="{% url 'agents:agent_performance' agent.id %}" class="btn-primary">View Performance</a>
+{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:300px 1fr;gap:20px;">
+
+  <!-- Left: Profile -->
+  <div>
+    <div class="card" style="text-align:center;margin-bottom:16px;">
+      <div class="avatar" style="width:80px;height:80px;font-size:26px;margin:0 auto 14px;background:var(--orange-lt);color:var(--orange);">
+        {{ agent.first_name|first|upper }}{{ agent.last_name|first|upper }}
+      </div>
+      <h2 style="font-size:18px;font-weight:800;">{{ agent.get_full_name|default:agent.username }}</h2>
+      <div style="color:var(--gray-400);font-size:13px;margin-top:4px;">@{{ agent.username }}</div>
+      <span class="badge {% if agent_profile.is_active %}badge-green{% else %}badge-red{% endif %}" style="margin-top:10px;">
+        {% if agent_profile.is_active %}Active{% else %}Inactive{% endif %}
+      </span>
+      {% if agent_profile.department %}
+      <div style="margin-top:10px;padding:6px 12px;background:var(--gray-50);border-radius:8px;font-size:13px;color:var(--gray-700);">{{ agent_profile.department }}</div>
+      {% endif %}
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="settings-title">Contact Info</div>
+      <div style="font-size:13px;color:var(--gray-400);margin-bottom:6px;">Email</div>
+      <div style="font-size:14px;font-weight:500;margin-bottom:12px;">{{ agent.email|default:"—" }}</div>
+      <div style="font-size:13px;color:var(--gray-400);margin-bottom:6px;">Phone</div>
+      <div style="font-size:14px;font-weight:500;margin-bottom:12px;">{{ agent_profile.phone|default:"—" }}</div>
+      <div style="font-size:13px;color:var(--gray-400);margin-bottom:6px;">Hire Date</div>
+      <div style="font-size:14px;font-weight:500;">{{ agent_profile.hire_date|date:"M d, Y" }}</div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="settings-title">Daily Targets</div>
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;">
+          <span style="color:var(--gray-400);">Calls / Day</span>
+          <span style="font-weight:700;">{{ agent_profile.target_calls_per_day }}</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:{% widthratio today_calls agent_profile.target_calls_per_day 100 %}%;background:var(--orange);max-width:100%;"></div></div>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:4px;">{{ today_calls }} calls today</div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;">
+          <span style="color:var(--gray-400);">Conv. / Month</span>
+          <span style="font-weight:700;">{{ agent_profile.target_conversions_per_month }}</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:{% widthratio converted_leads agent_profile.target_conversions_per_month 100 %}%;background:var(--green);max-width:100%;"></div></div>
+      </div>
+    </div>
+
+    <!-- Add Note -->
+    <div class="card">
+      <div class="settings-title">Add Note</div>
+      <form method="post" action="{% url 'agents:add_agent_note' agent.id %}">
+        {% csrf_token %}
+        <div class="form-group">
+          <textarea class="form-input" name="note" rows="3" placeholder="Write a note about this agent…" style="resize:none;"></textarea>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" name="is_private" style="accent-color:var(--orange);"/> Private
+          </label>
+          <button type="submit" class="btn-primary" style="padding:8px 16px;">Add Note</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Right: Stats & Activity -->
+  <div>
+    <!-- Stats Row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;">
+      <div class="stat-card orange" style="padding:16px;">
+        <div class="stat-icon orange" style="width:36px;height:36px;margin-bottom:10px;"><svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/></svg></div>
+        <div class="stat-value" style="font-size:22px;">{{ total_leads }}</div>
+        <div class="stat-label">Leads</div>
+      </div>
+      <div class="stat-card blue" style="padding:16px;">
+        <div class="stat-icon blue" style="width:36px;height:36px;margin-bottom:10px;"><svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6" stroke="currentColor" stroke-width="2"/></svg></div>
+        <div class="stat-value" style="font-size:22px;">{{ total_calls }}</div>
+        <div class="stat-label">Total Calls</div>
+      </div>
+      <div class="stat-card green" style="padding:16px;">
+        <div class="stat-icon green" style="width:36px;height:36px;margin-bottom:10px;"><svg width="18" height="18" fill="none" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2"/></svg></div>
+        <div class="stat-value" style="font-size:22px;">{{ converted_leads }}</div>
+        <div class="stat-label">Converted</div>
+      </div>
+      <div class="stat-card purple" style="padding:16px;">
+        <div class="stat-icon purple" style="width:36px;height:36px;margin-bottom:10px;"><svg width="18" height="18" fill="none" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke="currentColor" stroke-width="2"/></svg></div>
+        <div class="stat-value" style="font-size:22px;">{{ conversion_rate }}%</div>
+        <div class="stat-label">Conv. Rate</div>
+      </div>
+    </div>
+
+    <!-- Recent Calls + Follow-ups -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Recent Calls</div></div>
+        {% for call in recent_calls %}
+        <div style="padding:10px 0;border-bottom:1px solid var(--gray-200);">
+          <div style="font-size:13px;font-weight:600;">{{ call.lead.name }}</div>
+          <div style="display:flex;justify-content:space-between;margin-top:4px;">
+            <span class="badge badge-blue" style="font-size:11px;">{{ call.disposition|default:"—" }}</span>
+            <span style="font-size:11px;color:var(--gray-400);">{{ call.call_date|timesince }} ago</span>
+          </div>
+        </div>
+        {% empty %}<p style="color:var(--gray-400);font-size:13px;padding:16px 0;text-align:center;">No calls yet.</p>{% endfor %}
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">Upcoming Follow-ups</div></div>
+        {% for fu in upcoming_follow_ups %}
+        <div style="padding:10px 0;border-bottom:1px solid var(--gray-200);">
+          <div style="font-size:13px;font-weight:600;">{{ fu.lead.name }}</div>
+          <div style="display:flex;justify-content:space-between;margin-top:4px;">
+            <span style="font-size:12px;color:var(--orange);">{{ fu.follow_up_date|date:"M d" }} {{ fu.follow_up_time|time:"H:i" }}</span>
+          </div>
+        </div>
+        {% empty %}<p style="color:var(--gray-400);font-size:13px;padding:16px 0;text-align:center;">No upcoming follow-ups.</p>{% endfor %}
+      </div>
+    </div>
+
+    <!-- Monthly Performance -->
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-header">
+        <div class="card-title">6-Month Performance</div>
+      </div>
+      <canvas id="perfChart" height="160"></canvas>
+    </div>
+
+    <!-- Notes -->
+    <div class="card">
+      <div class="card-header"><div class="card-title">Notes</div></div>
+      {% for note in agent_notes %}
+      <div style="padding:12px 0;border-bottom:1px solid var(--gray-200);">
+        <div style="font-size:13px;color:var(--gray-700);">{{ note.note }}</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:6px;">{{ note.created_by.get_full_name|default:note.created_by.username }} · {{ note.created_at|timesince }} ago{% if note.is_private %} · 🔒 Private{% endif %}</div>
+      </div>
+      {% empty %}<p style="color:var(--gray-400);font-size:13px;text-align:center;padding:16px 0;">No notes yet.</p>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const months = [{% for m in monthly_performance %}'{{ m.month }}',{% endfor %}];
+  const calls  = [{% for m in monthly_performance %}{{ m.calls }},{% endfor %}];
+  const convs  = [{% for m in monthly_performance %}{{ m.conversions }},{% endfor %}];
+  new Chart(document.getElementById('perfChart').getContext('2d'), {
+    type:'bar',
+    data:{labels:months,datasets:[
+      {label:'Calls',data:calls,backgroundColor:'rgba(255,122,47,0.8)',borderRadius:6,borderSkipped:false},
+      {label:'Conversions',data:convs,backgroundColor:'rgba(46,204,113,0.8)',borderRadius:6,borderSkipped:false}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Inter',size:12},usePointStyle:true}}},scales:{x:{grid:{display:false}},y:{grid:{color:'#F5F3EF'},ticks:{font:{family:'Inter',size:11}}}}}
+  });
+})();
+</script>
+{% endblock %}

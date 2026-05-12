@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block title %}Upload Leads – DialEasy{% endblock %}
+{% block page_title %}Upload Leads{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+
+  <!-- Upload Form -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Upload Lead File</div>
+        <div class="card-subtitle">CSV or Excel (.xlsx) supported</div>
+      </div>
+    </div>
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label">Select File</label>
+        <div id="dropZone" style="border:2px dashed var(--gray-200);border-radius:14px;padding:36px;text-align:center;cursor:pointer;transition:all .2s;background:var(--gray-50);" onclick="document.getElementById('fileInput').click();">
+          <svg width="40" height="40" fill="none" viewBox="0 0 24 24" style="margin:0 auto 12px;display:block;color:var(--gray-400);"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div style="font-size:15px;font-weight:600;color:var(--gray-700);" id="dropText">Click to browse or drag & drop</div>
+          <div style="font-size:13px;color:var(--gray-400);margin-top:6px;">CSV, XLS, XLSX – up to 10MB</div>
+        </div>
+        <input type="file" id="fileInput" name="lead_file" accept=".csv,.xlsx,.xls" style="display:none;" onchange="updateFileName(this)"/>
+      </div>
+
+      <div class="card" style="padding:16px;background:var(--gray-50);border:none;margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px;">Required Columns</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="badge badge-orange">name</span>
+          <span class="badge badge-orange">phone</span>
+          <span class="badge badge-gray">email (optional)</span>
+          <span class="badge badge-gray">company (optional)</span>
+          <span class="badge badge-gray">source (optional)</span>
+        </div>
+      </div>
+
+      <div class="form-actions" style="justify-content:space-between;margin-top:0;">
+        <a href="{% url 'leads:download_sample_csv' %}" class="btn-secondary">⬇ Download Sample</a>
+        <button type="submit" class="btn-primary">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+          Upload Leads
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Recent Uploads -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Recent Uploads</div>
+    </div>
+    {% if recent_uploads %}
+    {% for upload in recent_uploads %}
+    <div style="padding:14px 0;border-bottom:1px solid var(--gray-200);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:13px;font-weight:600;">{{ upload.file.name|truncatechars:30 }}</span>
+        <span class="badge {% if upload.status == 'completed' %}badge-green{% elif upload.status == 'failed' %}badge-red{% else %}badge-orange{% endif %}">{{ upload.status|capfirst }}</span>
+      </div>
+      <div style="display:flex;gap:16px;">
+        <span style="font-size:12px;color:var(--gray-400);">{{ upload.created_at|date:"M d, Y – H:i" }}</span>
+        {% if upload.total_records %}
+        <span style="font-size:12px;color:var(--green-dk);">✓ {{ upload.processed_records }} imported</span>
+        {% if upload.failed_records %}
+        <span style="font-size:12px;color:#EF4444;">✗ {{ upload.failed_records }} failed</span>
+        {% endif %}
+        {% endif %}
+      </div>
+      {% if upload.error_log %}
+      <div style="margin-top:8px;padding:8px 12px;background:#FEF2F2;border-radius:8px;font-size:12px;color:#EF4444;">{{ upload.error_log|truncatewords:20 }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state" style="padding:32px 0;">
+      <svg width="40" height="40" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <h3>No uploads yet</h3>
+      <p>Your upload history will appear here.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const zone = document.getElementById('dropZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor='var(--orange)'; zone.style.background='var(--orange-lt)'; });
+zone.addEventListener('dragleave', () => { zone.style.borderColor='var(--gray-200)'; zone.style.background='var(--gray-50)'; });
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.style.borderColor='var(--gray-200)'; zone.style.background='var(--gray-50)';
+  const files = e.dataTransfer.files;
+  if(files.length){ document.getElementById('fileInput').files = files; updateFileName({files}); }
+});
+function updateFileName(input){
+  const f = input.files[0];
+  if(f){ document.getElementById('dropText').textContent = '📄 ' + f.name; }
+}
+</script>
+{% endblock %}

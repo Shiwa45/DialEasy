@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+{% block title %}Integrations – DialEasy{% endblock %}
+{% block page_title %}Integrations{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-info">
+    <h2>Lead Source Integrations</h2>
+    <p>Configure webhooks to auto-capture leads from external platforms</p>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px;">
+
+  <!-- Meta / Facebook -->
+  <div class="card">
+    <div class="card-header">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:42px;height:42px;border-radius:12px;background:#EFF6FF;display:flex;align-items:center;justify-content:center;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#3B82F6"><path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"/></svg>
+        </div>
+        <div>
+          <div class="card-title">Meta / Facebook Ads</div>
+          <div class="card-subtitle">Lead form & ad campaigns</div>
+        </div>
+      </div>
+      <span class="badge {% if configs.meta and configs.meta.is_active %}badge-green{% else %}badge-gray{% endif %}">
+        {% if configs.meta and configs.meta.is_active %}Active{% else %}Inactive{% endif %}
+      </span>
+    </div>
+    <div style="padding:10px 12px;background:var(--gray-50);border-radius:10px;margin-bottom:16px;">
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:4px;">Webhook URL</div>
+      <div style="font-size:12px;font-family:monospace;word-break:break-all;color:var(--gray-700);">{{ webhook_urls.meta }}</div>
+    </div>
+    <form method="post">{% csrf_token %}
+      <input type="hidden" name="platform" value="meta"/>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">App ID</label><input class="form-input" name="app_id" value="{{ configs.meta.app_id|default:'' }}" placeholder="Meta App ID"/></div>
+        <div class="form-group"><label class="form-label">App Secret</label><input class="form-input" name="app_secret" type="password" value="{{ configs.meta.app_secret|default:'' }}" placeholder="••••••••"/></div>
+      </div>
+      <div class="form-group"><label class="form-label">Page Access Token</label><input class="form-input" name="page_access_token" value="{{ configs.meta.page_access_token|default:'' }}" placeholder="EAAxxxxxxxx"/></div>
+      <div class="form-group"><label class="form-label">Verify Token</label><input class="form-input" name="verify_token" value="{{ configs.meta.verify_token|default:'' }}" placeholder="my_verify_token"/></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" name="is_active" {% if configs.meta and configs.meta.is_active %}checked{% endif %} style="accent-color:var(--orange);"/>
+          Enable Integration
+        </label>
+        <button type="submit" class="btn-primary" style="padding:8px 16px;">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- WhatsApp -->
+  <div class="card">
+    <div class="card-header">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:42px;height:42px;border-radius:12px;background:#E6FAF0;display:flex;align-items:center;justify-content:center;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#27AE60"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.557 4.118 1.528 5.845L0 24l6.335-1.51A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.8 9.8 0 01-5.021-1.378l-.36-.214-3.732.889.93-3.618-.236-.374A9.818 9.818 0 1112 21.818z"/></svg>
+        </div>
+        <div>
+          <div class="card-title">WhatsApp Business</div>
+          <div class="card-subtitle">Cloud API integration</div>
+        </div>
+      </div>
+      <span class="badge {% if configs.whatsapp and configs.whatsapp.is_active %}badge-green{% else %}badge-gray{% endif %}">
+        {% if configs.whatsapp and configs.whatsapp.is_active %}Active{% else %}Inactive{% endif %}
+      </span>
+    </div>
+    <div style="padding:10px 12px;background:var(--gray-50);border-radius:10px;margin-bottom:16px;">
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:4px;">Webhook URL</div>
+      <div style="font-size:12px;font-family:monospace;word-break:break-all;color:var(--gray-700);">{{ webhook_urls.whatsapp }}</div>
+    </div>
+    <form method="post">{% csrf_token %}
+      <input type="hidden" name="platform" value="whatsapp"/>
+      <div class="form-group"><label class="form-label">Phone Number ID</label><input class="form-input" name="whatsapp_phone_number_id" value="{{ configs.whatsapp.whatsapp_phone_number_id|default:'' }}" placeholder="1234567890"/></div>
+      <div class="form-group"><label class="form-label">Access Token</label><input class="form-input" name="whatsapp_access_token" type="password" value="{{ configs.whatsapp.whatsapp_access_token|default:'' }}" placeholder="EAAxxxxxxxx"/></div>
+      <div class="form-group"><label class="form-label">Verify Token</label><input class="form-input" name="whatsapp_verify_token" value="{{ configs.whatsapp.whatsapp_verify_token|default:'' }}" placeholder="my_verify_token"/></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" name="is_active" {% if configs.whatsapp and configs.whatsapp.is_active %}checked{% endif %} style="accent-color:var(--orange);"/>
+          Enable Integration
+        </label>
+        <button type="submit" class="btn-primary" style="padding:8px 16px;">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- IndiaMart -->
+  <div class="card">
+    <div class="card-header">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:42px;height:42px;border-radius:12px;background:#FFFBEB;display:flex;align-items:center;justify-content:center;font-size:20px;">🛒</div>
+        <div>
+          <div class="card-title">IndiaMart</div>
+          <div class="card-subtitle">Auto-capture buyer enquiries</div>
+        </div>
+      </div>
+      <span class="badge {% if configs.indiamart and configs.indiamart.is_active %}badge-green{% else %}badge-gray{% endif %}">
+        {% if configs.indiamart and configs.indiamart.is_active %}Active{% else %}Inactive{% endif %}
+      </span>
+    </div>
+    <div style="padding:10px 12px;background:var(--gray-50);border-radius:10px;margin-bottom:16px;">
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:4px;">Webhook URL (POST to IndiaMart)</div>
+      <div style="font-size:12px;font-family:monospace;word-break:break-all;color:var(--gray-700);">{{ webhook_urls.indiamart }}</div>
+    </div>
+    <form method="post">{% csrf_token %}
+      <input type="hidden" name="platform" value="indiamart"/>
+      <p style="font-size:13px;color:var(--gray-400);margin-bottom:16px;">Configure this webhook URL in your IndiaMart seller dashboard under Lead Manager → Webhook settings.</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" name="is_active" {% if configs.indiamart and configs.indiamart.is_active %}checked{% endif %} style="accent-color:var(--orange);"/>
+          Enable Integration
+        </label>
+        <button type="submit" class="btn-primary" style="padding:8px 16px;">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- JustDial -->
+  <div class="card">
+    <div class="card-header">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:42px;height:42px;border-radius:12px;background:#F5F3FF;display:flex;align-items:center;justify-content:center;font-size:20px;">📞</div>
+        <div>
+          <div class="card-title">JustDial</div>
+          <div class="card-subtitle">Local business lead capture</div>
+        </div>
+      </div>
+      <span class="badge {% if configs.justdial and configs.justdial.is_active %}badge-green{% else %}badge-gray{% endif %}">
+        {% if configs.justdial and configs.justdial.is_active %}Active{% else %}Inactive{% endif %}
+      </span>
+    </div>
+    <div style="padding:10px 12px;background:var(--gray-50);border-radius:10px;margin-bottom:16px;">
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:4px;">Webhook URL</div>
+      <div style="font-size:12px;font-family:monospace;word-break:break-all;color:var(--gray-700);">{{ webhook_urls.justdial }}</div>
+    </div>
+    <form method="post">{% csrf_token %}
+      <input type="hidden" name="platform" value="justdial"/>
+      <p style="font-size:13px;color:var(--gray-400);margin-bottom:16px;">Add this webhook URL in your JustDial business account under Leads → API Integration.</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" name="is_active" {% if configs.justdial and configs.justdial.is_active %}checked{% endif %} style="accent-color:var(--orange);"/>
+          Enable Integration
+        </label>
+        <button type="submit" class="btn-primary" style="padding:8px 16px;">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Recent Logs -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Integration Logs</div>
+    <span class="badge badge-gray">Last 50 events</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Platform</th><th>Status</th><th>Message</th><th>Time</th></tr></thead>
+      <tbody>
+        {% for log in recent_logs %}
+        <tr>
+          <td><span class="badge badge-blue">{{ log.platform|upper }}</span></td>
+          <td><span class="badge {% if log.status == 'success' %}badge-green{% else %}badge-red{% endif %}">{{ log.status }}</span></td>
+          <td style="color:var(--gray-400);font-size:13px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ log.message|default:"—" }}</td>
+          <td style="color:var(--gray-400);font-size:12px;">{{ log.created_at|timesince }} ago</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" style="text-align:center;color:var(--gray-400);padding:24px;">No integration events yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -10,16 +10,22 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.http import JsonResponse
 from datetime import datetime, timedelta
 import json
 
-from leads.models import Lead, CallLog, FollowUp
+from leads.models import (
+    Lead, CallLog, FollowUp,
+    LeadNote, LeadTask, Product, LeadProduct, LeadActivity, AssignmentRule
+)
 from agents.models import AgentProfile, AgentTarget, DialerSession, CallActivityEvent
 from .serializers import (
     LeadSerializer, CallLogSerializer, FollowUpSerializer,
     LeadUpdateSerializer, CallLogCreateSerializer, FollowUpCreateSerializer,
+    LeadNoteSerializer, LeadNoteCreateSerializer,
+    LeadTaskSerializer, ProductSerializer,
+    LeadProductSerializer, LeadActivitySerializer,
     UserSerializer, LeadDetailSerializer
 )
 
@@ -201,7 +207,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             
             # Apply ordering
             ordering = request.query_params.get('ordering', '-created_at')
-            allowed_orderings = ['created_at', '-created_at', 'name', '-name', 'status', '-status']
+            allowed_orderings = ['created_at', '-created_at', 'name', '-name', 'status', '-status', 'lead_score', '-lead_score']
             if ordering in allowed_orderings:
                 queryset = queryset.order_by(ordering)
             else:
@@ -730,44 +736,6 @@ def call_disposition_choices(request):
         'choices': [{'value': choice[0], 'label': choice[1]} for choice in CallLog.DISPOSITION_CHOICES]
     })
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def app_config(request):
-    """
-    Get app configuration for mobile
-    
-    GET /api/utils/app-config/
-    """
-    try:
-        agent_profile, created = AgentProfile.objects.get_or_create(
-            user=request.user,
-            defaults={
-                'hire_date': timezone.now().date(),
-                'target_calls_per_day': 50,
-                'target_conversions_per_month': 10
-            }
-        )
-        
-        return Response({
-            'lead_statuses': [{'value': choice[0], 'label': choice[1]} for choice in Lead.STATUS_CHOICES],
-            'call_dispositions': [{'value': choice[0], 'label': choice[1]} for choice in CallLog.DISPOSITION_CHOICES],
-            'agent_targets': {
-                'daily_calls': agent_profile.target_calls_per_day,
-                'monthly_conversions': agent_profile.target_conversions_per_month,
-            },
-            'app_settings': {
-                'auto_dial_enabled': True,
-                'notification_enabled': True,
-                'call_recording_enabled': agent_profile.call_recording_enabled,
-                'offline_mode_enabled': True,
-            }
-        })
-    except Exception as e:
-        return Response(
-            {'error': f'App config fetch failed: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
 # ===============================
 # SEARCH AND FILTERS
 # ===============================
@@ -998,27 +966,15 @@ def sync_download_data(request):
         else:
             since_date = timezone.now() - timedelta(days=7)
         
-        # Get updated data
-        updated_leads = Lead.objects.filter(
-            assigned_agent=request.user,
-            updated_at__gte=since_date
-        )
-        
-        new_call_logs = CallLog.objects.filter(
-            agent=request.user,
-            created_at__gte=since_date
-        )
-        
-        new_follow_ups = FollowUp.objects.filter(
-            agent=request.user,
-            created_at__gte=since_date
-        )
+        leads = Lead.objects.filter(assigned_agent=request.user, updated_at__gte=since_date)
+        call_logs = CallLog.objects.filter(agent=request.user, created_at__gte=since_date)
+        follow_ups = FollowUp.objects.filter(agent=request.user, created_at__gte=since_date)
         
         return Response({
-            'leads': LeadSerializer(updated_leads, many=True).data,
-            'call_logs': CallLogSerializer(new_call_logs, many=True).data,
-            'follow_ups': FollowUpSerializer(new_follow_ups, many=True).data,
-            'sync_timestamp': timezone.now().isoformat()
+            'leads': LeadSerializer(leads, many=True).data,
+            'call_logs': CallLogSerializer(call_logs, many=True).data,
+            'follow_ups': FollowUpSerializer(follow_ups, many=True).data,
+            'timestamp': timezone.now().isoformat()
         })
     except Exception as e:
         return Response(
@@ -1026,570 +982,439 @@ def sync_download_data(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-# ===============================
-# PERFORMANCE ENDPOINTS
-# ===============================
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def performance_summary(request):
-    """
-    Get performance summary for different time periods
-    
-    GET /api/performance/summary/?period=week
-    """
-    try:
-        if request.user.is_staff:
-            return Response({'error': 'This endpoint is for agents only'}, status=status.HTTP_403_FORBIDDEN)
-        
-        period = request.query_params.get('period', 'week')  # week, month, quarter
-        today = timezone.now().date()
-        
-        if period == 'week':
-            start_date = today - timedelta(days=7)
-        elif period == 'month':
-            start_date = today.replace(day=1)
-        elif period == 'quarter':
-            quarter_start_month = ((today.month - 1) // 3) * 3 + 1
-            start_date = today.replace(month=quarter_start_month, day=1)
-        else:
-            start_date = today - timedelta(days=7)
-        
-        # Get performance data
-        calls = CallLog.objects.filter(
-            agent=request.user,
-            call_date__date__range=[start_date, today]
-        )
-        
-        leads = Lead.objects.filter(
-            assigned_agent=request.user,
-            updated_at__date__range=[start_date, today]
-        )
-        
-        # Get top disposition
-        top_disposition = calls.values('disposition').annotate(count=Count('id')).order_by('-count').first()
-        
-        return Response({
-            'period': period,
-            'start_date': start_date.isoformat(),
-            'end_date': today.isoformat(),
-            'metrics': {
-                'total_calls': calls.count(),
-                'total_leads': leads.count(),
-                'conversions': leads.filter(status='converted').count(),
-                'conversion_rate': round(leads.filter(status='converted').count() / leads.count() * 100, 2) if leads.count() > 0 else 0,
-                'avg_calls_per_day': round(calls.count() / ((today - start_date).days + 1), 2),
-                'top_disposition': top_disposition
-            }
-        })
-    except Exception as e:
-        return Response(
-            {'error': f'Performance summary failed: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    
-
-
-
-# api/views.py - ADD THESE FOLLOW-UP ENDPOINTS TO YOUR EXISTING FILE
-
-from django.utils import timezone
-from datetime import datetime, timedelta
-
-# Add these imports to your existing imports
-from django.db.models import Q, Count
-from django.http import JsonResponse
-import json
-
-# ===============================
-# FOLLOW-UP SPECIFIC ENDPOINTS
-# ===============================
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def today_follow_ups(request):
-    """
-    Get today's follow-ups for the agent
-    
-    GET /api/follow-ups/today/
-    """
-    try:
-        if request.user.is_staff:
-            return Response({'error': 'This endpoint is for agents only'}, status=status.HTTP_403_FORBIDDEN)
-        
-        today = timezone.now().date()
-        follow_ups = FollowUp.objects.filter(
-            agent=request.user,
-            follow_up_date=today,
-            is_completed=False
-        ).select_related('lead', 'agent').order_by('follow_up_time')
-        
-        serializer = FollowUpSerializer(follow_ups, many=True)
-        return Response(serializer.data)
-    except Exception as e:
-        return Response(
-            {'error': f'Failed to get today\'s follow-ups: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def overdue_follow_ups(request):
-    """
-    Get overdue follow-ups for the agent
-    
-    GET /api/follow-ups/overdue/
-    """
-    try:
-        if request.user.is_staff:
-            return Response({'error': 'This endpoint is for agents only'}, status=status.HTTP_403_FORBIDDEN)
-        
-        today = timezone.now().date()
-        follow_ups = FollowUp.objects.filter(
-            agent=request.user,
-            follow_up_date__lt=today,
-            is_completed=False
-        ).select_related('lead', 'agent').order_by('-follow_up_date', 'follow_up_time')
-        
-        serializer = FollowUpSerializer(follow_ups, many=True)
-        return Response(serializer.data)
-    except Exception as e:
-        return Response(
-            {'error': f'Failed to get overdue follow-ups: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def upcoming_follow_ups(request):
-    """
-    Get upcoming follow-ups for the agent
-    
-    GET /api/follow-ups/upcoming/
-    """
-    try:
-        if request.user.is_staff:
-            return Response({'error': 'This endpoint is for agents only'}, status=status.HTTP_403_FORBIDDEN)
-        
-        today = timezone.now().date()
-        follow_ups = FollowUp.objects.filter(
-            agent=request.user,
-            follow_up_date__gt=today,
-            is_completed=False
-        ).select_related('lead', 'agent').order_by('follow_up_date', 'follow_up_time')
-        
-        serializer = FollowUpSerializer(follow_ups, many=True)
-        return Response(serializer.data)
-    except Exception as e:
-        return Response(
-            {'error': f'Failed to get upcoming follow-ups: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def bulk_complete_follow_ups(request):
+def upload_call_recording(request, lead_id):
     """
-    Mark multiple follow-ups as completed
+    Upload call recording file
     
-    POST /api/follow-ups/bulk-complete/
-    {
-        "follow_up_ids": [1, 2, 3]
-    }
+    POST /api/leads/{lead_id}/recording/
+    File in 'recording' field
     """
     try:
-        if request.user.is_staff:
-            return Response({'error': 'This endpoint is for agents only'}, status=status.HTTP_403_FORBIDDEN)
+        lead = get_object_or_404(Lead, id=lead_id, assigned_agent=request.user)
+        recording_file = request.FILES.get('recording')
         
-        follow_up_ids = request.data.get('follow_up_ids', [])
+        if not recording_file:
+            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
         
-        if not follow_up_ids:
-            return Response(
-                {'error': 'follow_up_ids are required'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Get the latest call log for this lead by this agent
+        call_log = CallLog.objects.filter(lead=lead, agent=request.user).first()
         
-        # Validate that agent owns these follow-ups
-        follow_ups = FollowUp.objects.filter(
-            id__in=follow_up_ids,
-            agent=request.user,
-            is_completed=False
-        )
+        if not call_log:
+            return Response({'error': 'No call log found for this lead'}, status=status.HTTP_404_NOT_FOUND)
         
-        if follow_ups.count() != len(follow_up_ids):
-            return Response(
-                {'error': 'Some follow-ups not found or already completed'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Mark as completed
-        completed_count = follow_ups.update(
-            is_completed=True,
-            completed_at=timezone.now()
-        )
-        
-        return Response({
-            'message': f'Successfully completed {completed_count} follow-ups',
-            'completed_count': completed_count
-        })
-    except Exception as e:
-        return Response(
-            {'error': f'Bulk complete failed: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        call_log.recording = recording_file
+        call_log.recording_size = recording_file.size
+        call_log.save()
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def follow_up_stats(request):
-    """
-    Get follow-up statistics for the agent
-    
-    GET /api/follow-ups/stats/
-    """
-    try:
-        if request.user.is_staff:
-            return Response({'error': 'This endpoint is for agents only'}, status=status.HTTP_403_FORBIDDEN)
-        
-        today = timezone.now().date()
-        
-        # Basic counts
-        total_follow_ups = FollowUp.objects.filter(agent=request.user).count()
-        completed_follow_ups = FollowUp.objects.filter(agent=request.user, is_completed=True).count()
-        pending_follow_ups = FollowUp.objects.filter(agent=request.user, is_completed=False).count()
-        
-        # Today's follow-ups
-        today_follow_ups = FollowUp.objects.filter(
-            agent=request.user,
-            follow_up_date=today,
-            is_completed=False
-        ).count()
-        
-        # Overdue follow-ups
-        overdue_follow_ups = FollowUp.objects.filter(
-            agent=request.user,
-            follow_up_date__lt=today,
-            is_completed=False
-        ).count()
-        
-        # This week's follow-ups
-        week_start = today - timedelta(days=today.weekday())
-        week_end = week_start + timedelta(days=6)
-        week_follow_ups = FollowUp.objects.filter(
-            agent=request.user,
-            follow_up_date__range=[week_start, week_end],
-            is_completed=False
-        ).count()
-        
-        # Completion rate
-        completion_rate = round(completed_follow_ups / total_follow_ups * 100, 2) if total_follow_ups > 0 else 0
-        
-        # Recent activity (last 7 days)
-        week_ago = today - timedelta(days=7)
-        recent_completed = FollowUp.objects.filter(
-            agent=request.user,
-            completed_at__date__gte=week_ago,
-            is_completed=True
-        ).count()
-        
-        return Response({
-            'total_follow_ups': total_follow_ups,
-            'completed_follow_ups': completed_follow_ups,
-            'pending_follow_ups': pending_follow_ups,
-            'today_follow_ups': today_follow_ups,
-            'overdue_follow_ups': overdue_follow_ups,
-            'week_follow_ups': week_follow_ups,
-            'completion_rate': completion_rate,
-            'recent_completed': recent_completed,
-        })
-    except Exception as e:
-        return Response(
-            {'error': f'Failed to get follow-up stats: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def snooze_follow_up(request, follow_up_id):
-    """
-    Snooze a follow-up by rescheduling it
-    
-    POST /api/follow-ups/{follow_up_id}/snooze/
-    {
-        "snooze_minutes": 60  // Snooze for 60 minutes
-    }
-    """
-    try:
-        if request.user.is_staff:
-            return Response({'error': 'This endpoint is for agents only'}, status=status.HTTP_403_FORBIDDEN)
-        
-        follow_up = get_object_or_404(
-            FollowUp, 
-            id=follow_up_id, 
-            agent=request.user,
-            is_completed=False
-        )
-        
-        snooze_minutes = request.data.get('snooze_minutes', 60)
-        
+        # Phase 4 — AI Transcription
         try:
-            snooze_minutes = int(snooze_minutes)
-        except (ValueError, TypeError):
-            return Response(
-                {'error': 'Invalid snooze_minutes value'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            from ai.transcription_service import process_call_recording
+            from tenants.feature_gates import tenant_has_feature
+            if tenant_has_feature(request, 'ai_transcription'):
+                # In production, this should be an async Celery task
+                process_call_recording(call_log.id)
+        except Exception as ai_err:
+            print(f"AI processing trigger failed: {ai_err}")
         
-        # Calculate new follow-up time
-        now = timezone.now()
-        new_datetime = now + timedelta(minutes=snooze_minutes)
-        
-        follow_up.follow_up_date = new_datetime.date()
-        follow_up.follow_up_time = new_datetime.time()
-        follow_up.remarks = f"Snoozed {snooze_minutes} minutes: {follow_up.remarks or ''}"
-        follow_up.save()
-        
-        return Response(FollowUpSerializer(follow_up).data)
+        return Response({'message': 'Recording uploaded successfully', 'url': call_log.recording.url})
     except Exception as e:
         return Response(
-            {'error': f'Failed to snooze follow-up: {str(e)}'}, 
+            {'error': f'Upload failed: {str(e)}'}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def follow_up_dashboard(request):
-    """
-    Get follow-up dashboard data for the agent
-    
-    GET /api/follow-ups/dashboard/
-    """
-    try:
-        if request.user.is_staff:
-            return Response({'error': 'This endpoint is for agents only'}, status=status.HTTP_403_FORBIDDEN)
-        
-        user = request.user
-        today = timezone.now().date()
-        
-        # Today's follow-ups
-        today_follow_ups = FollowUp.objects.filter(
-            agent=user,
-            follow_up_date=today,
-            is_completed=False
-        ).select_related('lead').order_by('follow_up_time')[:5]
-        
-        # Overdue follow-ups
-        overdue_follow_ups = FollowUp.objects.filter(
-            agent=user,
-            follow_up_date__lt=today,
-            is_completed=False
-        ).select_related('lead').order_by('-follow_up_date', 'follow_up_time')[:5]
-        
-        # Upcoming follow-ups (next 7 days)
-        week_end = today + timedelta(days=7)
-        upcoming_follow_ups = FollowUp.objects.filter(
-            agent=user,
-            follow_up_date__range=[today + timedelta(days=1), week_end],
-            is_completed=False
-        ).select_related('lead').order_by('follow_up_date', 'follow_up_time')[:5]
-        
-        # Recent completed follow-ups
-        recent_completed = FollowUp.objects.filter(
-            agent=user,
-            is_completed=True
-        ).select_related('lead').order_by('-completed_at')[:5]
-        
-        return Response({
-            'today_follow_ups': FollowUpSerializer(today_follow_ups, many=True).data,
-            'overdue_follow_ups': FollowUpSerializer(overdue_follow_ups, many=True).data,
-            'upcoming_follow_ups': FollowUpSerializer(upcoming_follow_ups, many=True).data,
-            'recent_completed': FollowUpSerializer(recent_completed, many=True).data,
-        })
-    except Exception as e:
-        return Response(
-            {'error': f'Failed to get follow-up dashboard: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-# ===============================
-# ENHANCED DASHBOARD WITH FOLLOW-UPS
-# ===============================
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def enhanced_agent_dashboard(request):
     """
-    Enhanced agent dashboard with follow-up integration
-    
-    GET /api/agent/enhanced-dashboard/
+    Phase 1: Enhanced dashboard with more insights
     """
     try:
-        if request.user.is_staff:
-            return Response({'error': 'This endpoint is for agents only'}, status=status.HTTP_403_FORBIDDEN)
-        
         user = request.user
         today = timezone.now().date()
         
-        # Get original dashboard data
-        dashboard_response = agent_dashboard(request)
-        if dashboard_response.status_code != 200:
-            return dashboard_response
+        # Lead priority stats
+        hot_leads = Lead.objects.filter(assigned_agent=user, lead_score__gte=75).count()
+        warm_leads = Lead.objects.filter(assigned_agent=user, lead_score__range=(40, 74)).count()
         
-        dashboard_data = dashboard_response.data
+        # Task stats
+        pending_tasks = LeadTask.objects.filter(assigned_to=user, status__in=['pending', 'in_progress']).count()
+        overdue_tasks = LeadTask.objects.filter(assigned_to=user, status__in=['pending', 'in_progress'], due_date__lt=timezone.now()).count()
         
-        # Add follow-up specific data
-        follow_up_stats = {
-            'today_follow_ups': FollowUp.objects.filter(
-                agent=user,
-                follow_up_date=today,
-                is_completed=False
-            ).count(),
-            'overdue_follow_ups': FollowUp.objects.filter(
-                agent=user,
-                follow_up_date__lt=today,
-                is_completed=False
-            ).count(),
-            'total_follow_ups': FollowUp.objects.filter(
-                agent=user,
-                is_completed=False
-            ).count(),
-            'completed_today': FollowUp.objects.filter(
-                agent=user,
-                completed_at__date=today,
-                is_completed=True
-            ).count(),
-        }
+        # Revenue stats
+        total_pipeline_value = Lead.objects.filter(assigned_agent=user).aggregate(total=Sum('deal_value'))['total'] or 0
         
-        # Get priority follow-ups (overdue + today)
-        priority_follow_ups = FollowUp.objects.filter(
-            agent=user,
-            follow_up_date__lte=today,
-            is_completed=False
-        ).select_related('lead').order_by('follow_up_date', 'follow_up_time')[:3]
-        
-        # Add to dashboard data
-        dashboard_data['follow_up_stats'] = follow_up_stats
-        dashboard_data['priority_follow_ups'] = FollowUpSerializer(priority_follow_ups, many=True).data
-        
-        return Response(dashboard_data)
+        return Response({
+            'priority_leads': {'hot': hot_leads, 'warm': warm_leads},
+            'tasks': {'pending': pending_tasks, 'overdue': overdue_tasks},
+            'revenue': {'pipeline_value': total_pipeline_value},
+        })
     except Exception as e:
-        return Response(
-            {'error': f'Enhanced dashboard fetch failed: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        return Response({'error': str(e)}, status=500)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1: LEAD NOTES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def lead_notes(request, lead_id):
+    """
+    GET  /api/leads/{id}/notes/  — list all notes for a lead
+    POST /api/leads/{id}/notes/  — add a new note
+    """
+    try:
+        if request.user.is_staff:
+            lead = get_object_or_404(Lead, id=lead_id)
+        else:
+            lead = get_object_or_404(Lead, id=lead_id, assigned_agent=request.user)
+
+        if request.method == 'GET':
+            notes = lead.lead_notes.select_related('author').all()
+            return Response(LeadNoteSerializer(notes, many=True).data)
+
+        serializer = LeadNoteCreateSerializer(
+            data=request.data,
+            context={'request': request, 'lead': lead}
         )
+        if serializer.is_valid():
+            note = serializer.save()
+            return Response(LeadNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ===============================
-# CALL RECORDING ENDPOINT
-# ===============================
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def lead_note_detail(request, lead_id, note_id):
+    """
+    GET    /api/leads/{id}/notes/{note_id}/  — get single note
+    PATCH  /api/leads/{id}/notes/{note_id}/  — edit note
+    DELETE /api/leads/{id}/notes/{note_id}/  — delete note
+    """
+    try:
+        note = get_object_or_404(LeadNote, id=note_id, lead_id=lead_id)
+
+        if request.method == 'GET':
+            return Response(LeadNoteSerializer(note).data)
+
+        if request.method == 'PATCH':
+            serializer = LeadNoteSerializer(note, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                # Log edit activity
+                LeadActivity.objects.create(
+                    lead=note.lead, actor=request.user,
+                    activity_type='note_edited',
+                    description=f'Note edited: {note.content[:60]}...' if len(note.content) > 60 else f'Note edited: {note.content}',
+                )
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        if request.method == 'DELETE':
+            note.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1: LEAD TASKS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def lead_tasks(request, lead_id):
+    """
+    GET  /api/leads/{id}/tasks/  — list tasks for this lead
+    POST /api/leads/{id}/tasks/  — create new task
+    """
+    try:
+        if request.user.is_staff:
+            lead = get_object_or_404(Lead, id=lead_id)
+        else:
+            lead = get_object_or_404(Lead, id=lead_id, assigned_agent=request.user)
+
+        if request.method == 'GET':
+            tasks = lead.tasks.select_related('assigned_to', 'created_by').all()
+            return Response(LeadTaskSerializer(tasks, many=True).data)
+
+        data = request.data.copy()
+        data['lead'] = lead_id
+        serializer = LeadTaskSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            task = serializer.save(lead=lead, created_by=request.user)
+            return Response(LeadTaskSerializer(task).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def upload_call_recording(request, call_log_id):
+def complete_task(request, task_id):
     """
-    Upload a call recording for a specific call log.
-
-    POST /api/call-logs/<call_log_id>/upload-recording/
-    Content-Type: multipart/form-data
-    Body: recording=<audio file>
+    POST /api/tasks/{id}/complete/
+    Mark a task as done.
     """
     try:
-        call_log = get_object_or_404(CallLog, id=call_log_id, agent=request.user)
+        task = get_object_or_404(LeadTask, id=task_id)
+        task.status = 'done'
+        task.completed_at = timezone.now()
+        task.save()
+        return Response(LeadTaskSerializer(task).data)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        recording_file = request.FILES.get('recording')
-        if not recording_file:
-            return Response(
-                {'error': 'No recording file provided'},
-                status=status.HTTP_400_BAD_REQUEST
+
+class LeadTaskViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for global task management (all tasks assigned to current agent).
+    GET /api/tasks/          — all my tasks
+    GET /api/tasks/my/       — tasks assigned to me
+    GET /api/tasks/overdue/  — overdue tasks
+    """
+    serializer_class = LeadTaskSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return LeadTask.objects.all().select_related('lead', 'assigned_to', 'created_by')
+        return LeadTask.objects.filter(
+            Q(assigned_to=user) | Q(created_by=user)
+        ).select_related('lead', 'assigned_to', 'created_by')
+
+    @action(detail=False, methods=['get'])
+    def my(self, request):
+        tasks = self.get_queryset().filter(
+            assigned_to=request.user,
+            status__in=['pending', 'in_progress']
+        ).order_by('due_date')
+        return Response(self.get_serializer(tasks, many=True).data)
+
+    @action(detail=False, methods=['get'])
+    def overdue(self, request):
+        tasks = self.get_queryset().filter(
+            status__in=['pending', 'in_progress'],
+            due_date__lt=timezone.now()
+        )
+        return Response(self.get_serializer(tasks, many=True).data)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1: PRODUCTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ProductViewSet(viewsets.ModelViewSet):
+    """
+    GET /api/products/ — list all active products (for dropdown in Flutter)
+    """
+    serializer_class = ProductSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Product.objects.filter(is_active=True).order_by('name')
+
+
+@api_view(['GET', 'POST', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def lead_products_view(request, lead_id):
+    """
+    GET    /api/leads/{id}/products/         — list products linked to lead
+    POST   /api/leads/{id}/products/         — link a product to lead
+    DELETE /api/leads/{id}/products/?product_id=X — remove product from lead
+    """
+    try:
+        lead = get_object_or_404(Lead, id=lead_id)
+
+        if request.method == 'GET':
+            lps = lead.lead_products.select_related('product', 'added_by').all()
+            return Response(LeadProductSerializer(lps, many=True).data)
+
+        if request.method == 'POST':
+            data = request.data.copy()
+            data['lead'] = lead_id
+            serializer = LeadProductSerializer(data=data, context={'request': request})
+            if serializer.is_valid():
+                lp = serializer.save(lead=lead, added_by=request.user)
+                LeadActivity.objects.create(
+                    lead=lead, actor=request.user,
+                    activity_type='product_added',
+                    description=f'Product added: {lp.product.name} × {lp.quantity}',
+                )
+                return Response(LeadProductSerializer(lp).data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        if request.method == 'DELETE':
+            product_id = request.query_params.get('product_id')
+            lp = get_object_or_404(LeadProduct, lead=lead, product_id=product_id)
+            product_name = lp.product.name
+            lp.delete()
+            LeadActivity.objects.create(
+                lead=lead, actor=request.user,
+                activity_type='product_removed',
+                description=f'Product removed: {product_name}',
             )
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
-        # Validate file type
-        allowed_types = ['audio/m4a', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/aac']
-        content_type = recording_file.content_type or ''
-        if content_type and content_type not in allowed_types:
-            # Allow if content_type is empty (some clients don't set it)
-            pass
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Remove old recording if exists
-        if call_log.recording:
-            try:
-                import os
-                if os.path.isfile(call_log.recording.path):
-                    os.remove(call_log.recording.path)
-            except Exception:
-                pass
 
-        call_log.recording = recording_file
-        call_log.recording_size = recording_file.size
-        call_log.save()
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1: LEAD ACTIVITY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def lead_activity(request, lead_id):
+    """
+    GET /api/leads/{id}/activity/  — paginated activity timeline for a lead
+
+    Query params:
+      ?limit=30    (default 30)
+      ?offset=0
+    """
+    try:
+        lead = get_object_or_404(Lead, id=lead_id)
+        limit = int(request.query_params.get('limit', 30))
+        offset = int(request.query_params.get('offset', 0))
+
+        activities = lead.activities.select_related('actor').order_by('-created_at')[offset:offset + limit]
+        total = lead.activities.count()
 
         return Response({
-            'message': 'Recording uploaded successfully',
-            'call_log_id': call_log.id,
-            'recording_url': request.build_absolute_uri(call_log.recording.url),
-            'recording_size': call_log.recording_size,
-        }, status=status.HTTP_200_OK)
-
+            'count': total,
+            'results': LeadActivitySerializer(activities, many=True).data,
+        })
     except Exception as e:
-        return Response(
-            {'error': f'Failed to upload recording: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# ===============================
-# TIME TRACKING ENDPOINTS
-# ===============================
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1: LEAD SCORE
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def start_dialer_session(request):
-    """Start a new autodialer session. Returns session_id."""
+def recalculate_lead_score(request, lead_id):
+    """
+    POST /api/leads/{id}/score/  — force recalculate score for a lead.
+    Returns updated lead score.
+    """
     try:
-        # End any open sessions first (safety net)
-        for s in DialerSession.objects.filter(agent=request.user, session_end__isnull=True):
-            s.finalize()
-
-        session = DialerSession.objects.create(agent=request.user)
-        CallActivityEvent.objects.create(
-            agent=request.user,
-            session=session,
-            event_type='session_start',
-            timestamp=session.session_start
-        )
-        return Response({'message': 'Session started', 'session_id': session.id}, status=status.HTTP_201_CREATED)
+        lead = get_object_or_404(Lead, id=lead_id)
+        new_score = lead.recalculate_score()
+        return Response({'lead_id': lead.id, 'lead_score': new_score, 'score_label': lead.score_label})
     except Exception as e:
-        return Response({'error': f'Failed to start session: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1: BULK ASSIGN (API version)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def log_activity_event(request, session_id):
-    """Log a timestamped event inside a dialer session."""
+def bulk_assign_leads_api(request):
+    """
+    POST /api/leads/bulk-assign/
+    Body: { "lead_ids": [1,2,3], "agent_id": 5 }
+    Body: { "lead_ids": [1,2,3], "auto": true }  ← uses active AssignmentRule
+    """
     try:
-        session = get_object_or_404(DialerSession, id=session_id, agent=request.user)
-        event_type = request.data.get('event_type')
-        if not event_type:
-            return Response({'error': 'event_type is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.is_staff:
+            return Response({'error': 'Only admins can bulk-assign leads.'}, status=status.HTTP_403_FORBIDDEN)
 
-        valid_events = [c[0] for c in CallActivityEvent.EVENT_CHOICES]
-        if event_type not in valid_events:
-            return Response({'error': f'Invalid event_type. Valid: {valid_events}'}, status=status.HTTP_400_BAD_REQUEST)
+        lead_ids = request.data.get('lead_ids', [])
+        if not lead_ids:
+            return Response({'error': 'lead_ids required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if session.session_end and event_type != 'session_end':
-            return Response({'error': 'Session already closed'}, status=status.HTTP_400_BAD_REQUEST)
+        leads = Lead.objects.filter(id__in=lead_ids)
 
-        event = CallActivityEvent.objects.create(
-            agent=request.user,
-            session=session,
-            event_type=event_type,
-            lead_id=request.data.get('lead_id'),
-            call_log_id=request.data.get('call_log_id'),
-            timestamp=timezone.now()
+        # Auto-assign via rule
+        if request.data.get('auto'):
+            rule = AssignmentRule.objects.filter(is_active=True).first()
+            if not rule:
+                return Response({'error': 'No active assignment rule found.'}, status=400)
+            assigned = 0
+            for lead in leads:
+                agent = rule.get_next_agent(lead_source=lead.source)
+                if agent:
+                    lead.assigned_agent = agent
+                    lead.save(update_fields=['assigned_agent'])
+                    assigned += 1
+            return Response({'assigned': assigned, 'total': len(lead_ids)})
+
+        # Manual assign to specific agent
+        agent_id = request.data.get('agent_id')
+        if not agent_id:
+            return Response({'error': 'agent_id or auto=true required.'}, status=400)
+
+        agent = get_object_or_404(User, id=agent_id, is_active=True)
+        count = leads.update(assigned_agent=agent)
+        return Response({'assigned': count, 'agent': agent.get_full_name() or agent.username})
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1: ENHANCED app_config (adds score + deal fields info)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def app_config(request):
+    """
+    GET /api/utils/app-config/
+    Returns all config needed for the Flutter app on startup.
+    Phase 1: adds products list, task priorities, score thresholds.
+    """
+    from agents.models import AgentProfile
+
+    try:
+        agent_profile, _ = AgentProfile.objects.get_or_create(
+            user=request.user,
+            defaults={'hire_date': timezone.now().date()}
         )
 
-        if event_type == 'session_end':
-            session.finalize()
+        products = ProductSerializer(Product.objects.filter(is_active=True), many=True).data
 
-        return Response({'message': 'Event logged', 'event_id': event.id}, status=status.HTTP_201_CREATED)
+        return Response({
+            'lead_statuses': [{'value': k, 'label': v} for k, v in Lead.STATUS_CHOICES],
+            'call_dispositions': [{'value': k, 'label': v} for k, v in CallLog.DISPOSITION_CHOICES],
+            'follow_up_priorities': [{'value': k, 'label': v} for k, v in [
+                ('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('urgent', 'Urgent')
+            ]],
+            'task_priorities': [{'value': k, 'label': v} for k, v in [
+                ('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('urgent', 'Urgent')
+            ]],
+            'note_types': [{'value': k, 'label': v} for k, v in LeadNote.NOTE_TYPE_CHOICES],
+            'products': products,
+            'agent_targets': {
+                'daily_calls': agent_profile.target_calls_per_day,
+                'monthly_conversions': agent_profile.target_conversions_per_month,
+            },
+            'app_settings': {
+                'auto_dial_enabled': True,
+                'notification_enabled': True,
+                'offline_mode_enabled': True,
+                'lead_scoring_enabled': True,
+            },
+            'score_thresholds': {
+                'hot': 75,
+                'warm': 40,
+                'cold': 0,
+            },
+        })
     except Exception as e:
-        return Response({'error': f'Failed to log event: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block title %}My Dashboard – DialEasy{% endblock %}
+{% block page_title %}My Dashboard{% endblock %}
+
+{% block content %}
+<!-- Welcome -->
+<div class="page-header">
+  <div class="page-header-info">
+    <h2>Good day, {{ agent.get_full_name|default:agent.username }}! 👋</h2>
+    <p>Here's your performance overview for today.</p>
+  </div>
+  <div class="page-header-actions">
+    <a href="{% url 'agents:agent_leads' %}" class="btn-primary">View My Leads</a>
+  </div>
+</div>
+
+<!-- Stat Cards -->
+<div class="stats-grid">
+  <div class="stat-card orange">
+    <div class="stat-icon orange">
+      <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/></svg>
+    </div>
+    <div class="stat-value">{{ total_leads }}</div>
+    <div class="stat-label">My Leads</div>
+    <div class="stat-change up">{{ new_leads }} new · {{ contacted_leads }} contacted</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="stat-icon blue">
+      <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6" stroke="currentColor" stroke-width="2"/></svg>
+    </div>
+    <div class="stat-value">{{ today_calls }}</div>
+    <div class="stat-label">Calls Today</div>
+    <div class="stat-change up">{{ week_calls }} this week</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon green">
+      <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="stat-value">{{ converted_leads }}</div>
+    <div class="stat-label">Converted</div>
+    <div class="stat-change up">{{ conversion_rate }}% rate</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="stat-icon purple">
+      <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </div>
+    <div class="stat-value">{{ today_follow_ups }}</div>
+    <div class="stat-label">Follow-ups Today</div>
+  </div>
+</div>
+
+<!-- Target Progress -->
+{% if current_target %}
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <div class="card-title">Monthly Target Progress</div>
+    <span class="badge badge-orange">{{ current_target.month|date:"F Y" }}</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;">
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+        <span style="color:var(--gray-400);">Calls</span>
+        <span style="font-weight:700;">{{ current_target.actual_calls|default:0 }} / {{ current_target.target_calls }}</span>
+      </div>
+      <div class="progress-bar" style="height:8px;">
+        <div class="progress-fill" style="width:{% widthratio current_target.actual_calls|default:0 current_target.target_calls 100 %}%;background:var(--orange);max-width:100%;"></div>
+      </div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+        <span style="color:var(--gray-400);">Conversions</span>
+        <span style="font-weight:700;">{{ current_target.actual_conversions|default:0 }} / {{ current_target.target_conversions }}</span>
+      </div>
+      <div class="progress-bar" style="height:8px;">
+        <div class="progress-fill" style="width:{% widthratio current_target.actual_conversions|default:0 current_target.target_conversions 100 %}%;background:var(--green);max-width:100%;"></div>
+      </div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+        <span style="color:var(--gray-400);">Revenue Target</span>
+        <span style="font-weight:700;">₹{{ current_target.target_revenue|floatformat:0 }}</span>
+      </div>
+      <div class="progress-bar" style="height:8px;">
+        <div class="progress-fill" style="width:50%;background:#3B82F6;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Activity Grid -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+  <!-- Recent Calls -->
+  <div class="card">
+    <div class="card-header"><div class="card-title">Recent Calls</div></div>
+    {% for call in recent_calls %}
+    <div style="padding:10px 0;border-bottom:1px solid var(--gray-200);">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:13px;font-weight:600;">{{ call.lead.name }}</div>
+          <div style="font-size:12px;color:var(--gray-400);">{{ call.lead.phone }}</div>
+        </div>
+        <div style="text-align:right;">
+          <span class="badge badge-blue" style="font-size:11px;">{{ call.disposition|default:"Called" }}</span>
+          <div style="font-size:11px;color:var(--gray-400);margin-top:4px;">{{ call.call_date|timesince }} ago</div>
+        </div>
+      </div>
+    </div>
+    {% empty %}
+    <div class="empty-state" style="padding:24px 0;"><p>No calls logged yet.</p></div>
+    {% endfor %}
+  </div>
+
+  <!-- Upcoming Follow-ups -->
+  <div class="card">
+    <div class="card-header"><div class="card-title">Upcoming Follow-ups</div></div>
+    {% for fu in upcoming_follow_ups %}
+    <div style="padding:10px 0;border-bottom:1px solid var(--gray-200);">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:13px;font-weight:600;">{{ fu.lead.name }}</div>
+          <div style="font-size:12px;color:var(--gray-400);">{{ fu.notes|default:""|truncatewords:8 }}</div>
+        </div>
+        <div style="text-align:right;">
+          <span class="badge badge-orange" style="font-size:11px;">{{ fu.follow_up_date|date:"M d" }}</span>
+          {% if fu.follow_up_time %}<div style="font-size:11px;color:var(--gray-400);margin-top:4px;">{{ fu.follow_up_time|time:"H:i" }}</div>{% endif %}
+        </div>
+      </div>
+    </div>
+    {% empty %}
+    <div class="empty-state" style="padding:24px 0;"><p>No upcoming follow-ups.</p></div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

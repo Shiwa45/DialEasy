@@ -1,322 +1,161 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - TeleCRM</title>
-    
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    
-    <style>
-        :root {
-            --primary-color: #2c3e50;
-            --secondary-color: #3498db;
-        }
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login – DialEasy CRM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    :root{--orange:#FF7A2F;--orange-lt:#FFF0E6;--green:#2ECC71;--white:#FFFFFF;--gray-bg:#FAF8F5;--gray-50:#F5F3EF;--gray-200:#E8E3D9;--gray-400:#A89F94;--gray-700:#4A4440;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Inter',sans-serif;background:var(--gray-bg);color:var(--gray-700);min-height:100vh;display:flex;align-items:center;justify-content:center;}
 
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
+    .login-wrap{display:grid;grid-template-columns:1fr 1fr;min-height:100vh;width:100%;}
 
-        .login-container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 15px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-            max-width: 900px;
-            width: 100%;
-        }
+    /* Left panel */
+    .login-hero{
+      background:linear-gradient(135deg,#FF5500 0%,#FF7A2F 50%,#FFB380 100%);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      padding:48px;position:relative;overflow:hidden;
+    }
+    .login-hero::before{
+      content:'';position:absolute;width:400px;height:400px;border-radius:50%;
+      background:rgba(255,255,255,.07);top:-80px;right:-80px;
+    }
+    .login-hero::after{
+      content:'';position:absolute;width:260px;height:260px;border-radius:50%;
+      background:rgba(255,255,255,.05);bottom:-60px;left:-60px;
+    }
+    .hero-logo{display:flex;align-items:center;gap:14px;margin-bottom:48px;position:relative;z-index:1;}
+    .hero-logo-icon{width:54px;height:54px;border-radius:16px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);}
+    .hero-logo-text{font-size:28px;font-weight:800;color:#fff;}
+    .hero-logo-text span{opacity:.75;}
+    .hero-title{font-size:36px;font-weight:800;color:#fff;text-align:center;line-height:1.25;margin-bottom:16px;position:relative;z-index:1;}
+    .hero-sub{font-size:16px;color:rgba(255,255,255,.8);text-align:center;line-height:1.7;max-width:340px;position:relative;z-index:1;}
+    .hero-stats{display:flex;gap:28px;margin-top:48px;position:relative;z-index:1;}
+    .hero-stat{text-align:center;}
+    .hero-stat-val{font-size:28px;font-weight:800;color:#fff;}
+    .hero-stat-lbl{font-size:12px;color:rgba(255,255,255,.7);margin-top:3px;}
 
-        .login-left {
-            background: linear-gradient(135deg, var(--primary-color), #34495e);
-            color: white;
-            padding: 3rem;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
+    /* Right panel – form */
+    .login-form-wrap{display:flex;align-items:center;justify-content:center;padding:48px 32px;background:var(--white);}
+    .login-form-inner{width:100%;max-width:420px;}
+    .form-header{margin-bottom:36px;}
+    .form-header h2{font-size:28px;font-weight:800;color:var(--gray-700);}
+    .form-header p{font-size:15px;color:var(--gray-400);margin-top:6px;}
 
-        .login-right {
-            padding: 3rem;
-        }
+    .form-group{margin-bottom:18px;}
+    .form-label{font-size:13px;font-weight:600;color:var(--gray-700);margin-bottom:7px;display:block;}
+    .form-input{
+      width:100%;padding:12px 16px;
+      border:1.5px solid var(--gray-200);border-radius:12px;
+      font-size:15px;font-family:'Inter',sans-serif;color:var(--gray-700);
+      outline:none;transition:border-color .2s,box-shadow .2s;background:var(--gray-bg);
+    }
+    .form-input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,122,47,.12);background:var(--white);}
 
-        .logo {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-            color: white;
-        }
+    .btn-login{
+      width:100%;padding:13px;border-radius:12px;
+      background:linear-gradient(135deg,var(--orange),#FF5500);
+      color:#fff;font-size:15px;font-weight:700;
+      border:none;cursor:pointer;
+      transition:all .2s ease;
+      box-shadow:0 4px 16px rgba(255,122,47,.35);
+      font-family:'Inter',sans-serif;
+    }
+    .btn-login:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(255,122,47,.45);}
+    .btn-login:active{transform:translateY(0);}
 
-        .logo i {
-            margin-right: 0.5rem;
-        }
+    .alert{padding:12px 16px;border-radius:10px;margin-bottom:18px;font-size:14px;font-weight:500;display:flex;align-items:center;gap:10px;}
+    .alert-error{background:#FEF2F2;color:#EF4444;border-left:4px solid #EF4444;}
 
-        .welcome-text {
-            font-size: 1.1rem;
-            opacity: 0.9;
-            line-height: 1.6;
-        }
+    .divider{display:flex;align-items:center;gap:12px;margin:24px 0;color:var(--gray-400);font-size:13px;}
+    .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--gray-200);}
 
-        .feature-list {
-            list-style: none;
-            padding: 0;
-            margin-top: 2rem;
-        }
-
-        .feature-list li {
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-        }
-
-        .feature-list i {
-            margin-right: 1rem;
-            font-size: 1.2rem;
-            color: #3498db;
-        }
-
-        .form-control {
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            padding: 0.75rem 1rem;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .form-control:focus {
-            border-color: var(--secondary-color);
-            box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
-        }
-
-        .btn-login {
-            background: var(--secondary-color);
-            border: none;
-            border-radius: 8px;
-            padding: 0.75rem 2rem;
-            font-size: 1.1rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-
-        .btn-login:hover {
-            background: #2980b9;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
-        }
-
-        .input-group-text {
-            background: transparent;
-            border: 2px solid #e9ecef;
-            border-right: none;
-            color: #6c757d;
-        }
-
-        .input-group .form-control {
-            border-left: none;
-        }
-
-        .alert {
-            border-radius: 8px;
-            border: none;
-        }
-
-        @media (max-width: 768px) {
-            .login-left {
-                display: none;
-            }
-            
-            .login-container {
-                margin: 1rem;
-            }
-        }
-
-        .floating-elements {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            overflow: hidden;
-        }
-
-        .floating-elements::before,
-        .floating-elements::after {
-            content: '';
-            position: absolute;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.1);
-            animation: float 6s ease-in-out infinite;
-        }
-
-        .floating-elements::before {
-            width: 200px;
-            height: 200px;
-            top: 10%;
-            left: 10%;
-            animation-delay: 0s;
-        }
-
-        .floating-elements::after {
-            width: 300px;
-            height: 300px;
-            bottom: 10%;
-            right: 10%;
-            animation-delay: 3s;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(10deg); }
-        }
-    </style>
+    @media(max-width:768px){
+      .login-wrap{grid-template-columns:1fr;}
+      .login-hero{display:none;}
+      .login-form-wrap{padding:32px 20px;}
+    }
+  </style>
 </head>
 <body>
-    <div class="floating-elements"></div>
-    
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-lg-10">
-                <div class="login-container">
-                    <div class="row g-0">
-                        <!-- Left Side - Branding -->
-                        <div class="col-lg-5">
-                            <div class="login-left">
-                                <div>
-                                    <div class="logo">
-                                        <i class="fas fa-phone-alt"></i>
-                                        TeleCRM
-                                    </div>
-                                    <p class="welcome-text">
-                                        Welcome to your comprehensive lead management and telemarketing solution. 
-                                        Manage leads, track calls, and boost your sales performance.
-                                    </p>
-                                    
-                                    <ul class="feature-list">
-                                        <li>
-                                            <i class="fas fa-users"></i>
-                                            <span>Comprehensive Lead Management</span>
-                                        </li>
-                                        <li>
-                                            <i class="fas fa-phone"></i>
-                                            <span>Integrated Call Tracking</span>
-                                        </li>
-                                        <li>
-                                            <i class="fas fa-chart-line"></i>
-                                            <span>Real-time Analytics</span>
-                                        </li>
-                                        <li>
-                                            <i class="fas fa-mobile-alt"></i>
-                                            <span>Mobile Agent App</span>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Right Side - Login Form -->
-                        <div class="col-lg-7">
-                            <div class="login-right">
-                                <div class="text-center mb-4">
-                                    <h2 class="text-dark mb-2">Welcome Back!</h2>
-                                    <p class="text-muted">Please sign in to your account</p>
-                                </div>
-                                
-                                {% if messages %}
-                                    {% for message in messages %}
-                                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                                            {{ message }}
-                                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                                        </div>
-                                    {% endfor %}
-                                {% endif %}
-                                
-                                {% if form.errors %}
-                                    <div class="alert alert-danger">
-                                        <i class="fas fa-exclamation-triangle"></i>
-                                        <strong>Login Failed:</strong> Please check your username and password.
-                                    </div>
-                                {% endif %}
-                                
-                                <form method="post">
-                                    {% csrf_token %}
-                                    <div class="mb-3">
-                                        <label for="id_username" class="form-label">Username</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">
-                                                <i class="fas fa-user"></i>
-                                            </span>
-                                            <input type="text" class="form-control" id="id_username" 
-                                                   name="username" placeholder="Enter your username" required>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="mb-4">
-                                        <label for="id_password" class="form-label">Password</label>
-                                        <div class="input-group">
-                                            <span class="input-group-text">
-                                                <i class="fas fa-lock"></i>
-                                            </span>
-                                            <input type="password" class="form-control" id="id_password" 
-                                                   name="password" placeholder="Enter your password" required>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="d-grid">
-                                        <button type="submit" class="btn btn-primary btn-login">
-                                            <i class="fas fa-sign-in-alt"></i>
-                                            Sign In
-                                        </button>
-                                    </div>
-                                </form>
-                                
-                                <div class="text-center mt-4">
-                                    <small class="text-muted">
-                                        <i class="fas fa-shield-alt"></i>
-                                        Your data is secure and protected
-                                    </small>
-                                </div>
-                                
-                                <!-- Demo Credentials for Testing -->
-                                <div class="mt-4 p-3 bg-light rounded">
-                                    <small class="text-muted">
-                                        <strong>Demo Credentials:</strong><br>
-                                        Admin: admin / admin123<br>
-                                        Agent: agent1 / password123
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+<div class="login-wrap">
+
+  <!-- Hero Panel -->
+  <div class="login-hero">
+    <div class="hero-logo">
+      <div class="hero-logo-icon">
+        <svg width="28" height="28" fill="none" viewBox="0 0 24 24">
+          <path d="M12 2L3 7l9 5 9-5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="hero-logo-text">Dial<span>Easy</span></div>
     </div>
-    
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <script>
-        // Auto-hide alerts after 5 seconds
-        setTimeout(function() {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                if (alert.classList.contains('show')) {
-                    alert.classList.remove('show');
-                }
-            });
-        }, 5000);
-        
-        // Focus on username field on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('id_username').focus();
-        });
-    </script>
+    <h1 class="hero-title">Your Smart Dialer &amp; CRM Platform</h1>
+    <p class="hero-sub">Manage leads, track agent performance, and close more deals — all in one place.</p>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-val">10x</div>
+        <div class="hero-stat-lbl">Faster Dialing</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val">68%</div>
+        <div class="hero-stat-lbl">Better Conv.</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-val">24/7</div>
+        <div class="hero-stat-lbl">Tracking</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Form Panel -->
+  <div class="login-form-wrap">
+    <div class="login-form-inner">
+      <div class="form-header">
+        <h2>Welcome back 👋</h2>
+        <p>Sign in to your DialEasy account</p>
+      </div>
+
+      <!-- Errors -->
+      {% if form.errors %}
+      <div class="alert alert-error">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Invalid username or password. Please try again.
+      </div>
+      {% endif %}
+
+      {% if messages %}
+      {% for message in messages %}
+      <div class="alert alert-error">{{ message }}</div>
+      {% endfor %}
+      {% endif %}
+
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}"/>
+
+        <div class="form-group">
+          <label class="form-label" for="id_username">Username</label>
+          <input class="form-input" type="text" name="username" id="id_username" placeholder="Enter your username" autofocus autocomplete="username" required/>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="id_password">Password</label>
+          <input class="form-input" type="password" name="password" id="id_password" placeholder="Enter your password" autocomplete="current-password" required/>
+        </div>
+
+        <button type="submit" class="btn-login">Sign In →</button>
+      </form>
+
+      <div class="divider">DialEasy CRM</div>
+      <p style="text-align:center;font-size:13px;color:var(--gray-400);">
+        Contact your administrator if you've forgotten your credentials.
+      </p>
+    </div>
+  </div>
+
+</div>
 </body>
 </html>

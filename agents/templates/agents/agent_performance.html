@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% block title %}Performance – {{ agent.get_full_name }} – DialEasy{% endblock %}
+{% block page_title %}Agent Performance{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'agents:agent_detail' agent.id %}" class="btn-secondary">← Back</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-info">
+    <h2>{{ agent.get_full_name|default:agent.username }}</h2>
+    <p>Performance report: {{ start_date|date:"M d, Y" }} – {{ end_date|date:"M d, Y" }}</p>
+  </div>
+  <div class="page-header-actions">
+    <form method="get" style="display:flex;gap:10px;align-items:center;">
+      <input class="form-input" type="date" name="start_date" value="{{ start_date|date:'Y-m-d' }}" style="width:160px;"/>
+      <input class="form-input" type="date" name="end_date" value="{{ end_date|date:'Y-m-d' }}" style="width:160px;"/>
+      <button type="submit" class="btn-primary" style="padding:9px 16px;">Apply</button>
+    </form>
+  </div>
+</div>
+
+<!-- KPIs -->
+<div class="stats-grid" style="grid-template-columns:repeat(5,1fr);">
+  <div class="stat-card blue" style="padding:16px;">
+    <div class="stat-value" style="font-size:22px;">{{ total_calls }}</div>
+    <div class="stat-label">Total Calls</div>
+  </div>
+  <div class="stat-card orange" style="padding:16px;">
+    <div class="stat-value" style="font-size:22px;">{{ total_leads }}</div>
+    <div class="stat-label">Leads Handled</div>
+  </div>
+  <div class="stat-card green" style="padding:16px;">
+    <div class="stat-value" style="font-size:22px;">{{ total_conversions }}</div>
+    <div class="stat-label">Conversions</div>
+  </div>
+  <div class="stat-card purple" style="padding:16px;">
+    <div class="stat-value" style="font-size:22px;">{{ conversion_rate }}%</div>
+    <div class="stat-label">Conv. Rate</div>
+  </div>
+  <div class="stat-card orange" style="padding:16px;">
+    <div class="stat-value" style="font-size:22px;">{{ avg_calls_per_day }}</div>
+    <div class="stat-label">Avg Calls/Day</div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-bottom:18px;">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Daily Calls & Conversions</div>
+    </div>
+    <canvas id="dailyChart" height="200"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Disposition Breakdown</div>
+    </div>
+    <canvas id="dispositionChart" height="200"></canvas>
+    <div style="margin-top:14px;">
+      {% for d in disposition_breakdown %}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--gray-200);">
+        <span style="font-size:13px;">{{ d.disposition|default:"Unknown"|capfirst }}</span>
+        <span class="badge badge-orange">{{ d.count }}</span>
+      </div>
+      {% empty %}
+      <p style="color:var(--gray-400);font-size:13px;text-align:center;">No data.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Source Performance -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Lead Source Performance</div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Source</th><th>Total Leads</th><th>Converted</th><th>Conv. Rate</th></tr></thead>
+      <tbody>
+        {% for s in source_performance %}
+        <tr>
+          <td style="font-weight:600;">{{ s.source|default:"Unknown" }}</td>
+          <td>{{ s.total }}</td>
+          <td><span class="badge badge-green">{{ s.converted }}</span></td>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="progress-bar" style="flex:1;max-width:120px;"><div class="progress-fill" style="width:{{ s.conversion_rate }}%;background:var(--green);"></div></div>
+              <span style="font-size:13px;font-weight:600;">{{ s.conversion_rate }}%</span>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" style="text-align:center;color:var(--gray-400);padding:24px;">No source data available.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const dates = [{% for d in daily_performance %}'{{ d.date_display }}',{% endfor %}];
+  const calls = [{% for d in daily_performance %}{{ d.calls }},{% endfor %}];
+  const convs = [{% for d in daily_performance %}{{ d.conversions }},{% endfor %}];
+  new Chart(document.getElementById('dailyChart').getContext('2d'), {
+    type:'line',
+    data:{labels:dates,datasets:[
+      {label:'Calls',data:calls,borderColor:'#FF7A2F',backgroundColor:'rgba(255,122,47,0.08)',fill:true,tension:0.4,borderWidth:2,pointRadius:3,pointBackgroundColor:'#FF7A2F'},
+      {label:'Conversions',data:convs,borderColor:'#2ECC71',backgroundColor:'rgba(46,204,113,0.08)',fill:true,tension:0.4,borderWidth:2,pointRadius:3,pointBackgroundColor:'#2ECC71'}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Inter',size:12},usePointStyle:true}}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:'#F5F3EF'},ticks:{font:{size:11}}}}}
+  });
+  const dispLabels = [{% for d in disposition_breakdown %}'{{ d.disposition|default:"Unknown"|capfirst }}',{% endfor %}];
+  const dispData   = [{% for d in disposition_breakdown %}{{ d.count }},{% endfor %}];
+  if(dispLabels.length){
+    new Chart(document.getElementById('dispositionChart').getContext('2d'), {
+      type:'doughnut',
+      data:{labels:dispLabels,datasets:[{data:dispData,backgroundColor:['#FF7A2F','#2ECC71','#3B82F6','#8B5CF6','#F59E0B','#EF4444'],borderWidth:0,hoverOffset:4}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'65%'}
+    });
+  }
+})();
+</script>
+{% endblock %}

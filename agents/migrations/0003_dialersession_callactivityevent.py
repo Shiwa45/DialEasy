@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('agents', '0002_agentprofile_call_recording_enabled'),
-        ('leads', '0003_calllog_recording_calllog_recording_size'),
+        ('leads', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

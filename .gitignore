@@ -26,3 +26,7 @@ telecrm_app/.dart_tool/
 .DS_Store
 Thumbs.db
 *.hprof
+
+# Exclude Flutter App Directory
+telecrm_app/
+phone_state_local/

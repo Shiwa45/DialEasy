@@ -11,7 +11,8 @@ cloudinary==1.32.0
 colorama==0.4.6
 cryptography==39.0.2
 defusedxml==0.7.1
-Django==5.2.4
+Django==5.0.14
+django-tenants==3.6.1
 django-allauth==0.52.0
 django-colorfield==0.14.0
 django-cors-headers==4.7.0
@@ -40,7 +41,7 @@ packaging==25.0
 panoramisk==1.4
 phonenumbers==9.0.8
 pillow==11.3.0
-psycopg2-binary==2.9.10
+psycopg2-binary==2.9.9
 pycparser==2.22
 pydantic==2.11.7
 pydantic_core==2.33.2

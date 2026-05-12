@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block title %}Assign Leads – DialEasy{% endblock %}
+{% block page_title %}Assign Leads{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-info">
+    <h2>Assign Leads</h2>
+    <p>{{ unassigned_leads.count }} unassigned lead{{ unassigned_leads.count|pluralize }} waiting</p>
+  </div>
+</div>
+
+{% if unassigned_leads %}
+<form method="post" action="{% url 'leads:bulk_assign_leads' %}">
+  {% csrf_token %}
+  <div style="display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start;">
+
+    <!-- Lead Table -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Unassigned Leads</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="selectAll" onchange="toggleAll(this)"/>
+          Select All
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>Name</th><th>Phone</th><th>Email</th><th>Source</th><th>Added</th></tr></thead>
+          <tbody>
+            {% for lead in unassigned_leads %}
+            <tr>
+              <td><input type="checkbox" name="lead_ids" value="{{ lead.id }}" class="lead-check"/></td>
+              <td style="font-weight:600;">{{ lead.name }}</td>
+              <td style="color:var(--gray-400);">{{ lead.phone }}</td>
+              <td style="color:var(--gray-400);font-size:13px;">{{ lead.email|default:"—" }}</td>
+              <td><span class="badge badge-gray">{{ lead.source|default:"Unknown" }}</span></td>
+              <td style="color:var(--gray-400);font-size:12px;">{{ lead.created_at|date:"M d" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Agent Selection -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:16px;">Select Agent</div>
+      {% for agent in agents %}
+      <label style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;cursor:pointer;border:1.5px solid var(--gray-200);margin-bottom:8px;transition:all .2s;" onclick="this.style.borderColor='var(--orange)';this.style.background='var(--orange-lt)';">
+        <input type="radio" name="agent_id" value="{{ agent.id }}" style="accent-color:var(--orange);"/>
+        <div class="avatar" style="width:34px;height:34px;font-size:12px;background:var(--orange-lt);color:var(--orange);">{{ agent.first_name|first|upper }}{{ agent.last_name|first|upper }}</div>
+        <div>
+          <div style="font-size:14px;font-weight:600;">{{ agent.get_full_name|default:agent.username }}</div>
+          <div style="font-size:12px;color:var(--gray-400);">{{ agent.assigned_leads.count }} leads assigned</div>
+        </div>
+      </label>
+      {% empty %}
+      <div class="empty-state"><p>No active agents found.</p></div>
+      {% endfor %}
+
+      <button type="submit" class="btn-primary" style="width:100%;justify-content:center;margin-top:16px;">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+        Assign Selected
+      </button>
+    </div>
+  </div>
+</form>
+
+{% else %}
+<div class="card">
+  <div class="empty-state" style="padding:60px 0;">
+    <svg width="56" height="56" fill="none" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M7 4H4a2 2 0 00-2 2v14a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <h3>All leads are assigned!</h3>
+    <p>Upload new leads or check back later.</p>
+    <a href="{% url 'leads:upload_leads' %}" class="btn-primary" style="margin-top:16px;">Upload Leads</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleAll(cb){
+  document.querySelectorAll('.lead-check').forEach(c => c.checked = cb.checked);
+}
+</script>
+{% endblock %}

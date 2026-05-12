@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% block title %}Leads – DialEasy{% endblock %}
+{% block page_title %}Leads{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'leads:upload_leads' %}" class="btn-primary">
+  <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+  Upload Leads
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-info">
+    <h2>All Leads</h2>
+    <p>Manage and filter your lead pipeline</p>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" style="margin-bottom:20px;">
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+    <div class="search-wrap" style="flex:1;min-width:220px;max-width:340px;">
+      <svg class="search-icon" width="16" height="16" fill="none" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input type="text" name="search" value="{{ search_query|default:'' }}" placeholder="Search name, phone, email…"/>
+    </div>
+    <select name="status" class="form-input" style="width:160px;">
+      <option value="">All Statuses</option>
+      {% for val,label in status_choices %}
+      <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="agent" class="form-input" style="width:180px;">
+      <option value="">All Agents</option>
+      {% for agent in agents %}
+      <option value="{{ agent.id }}" {% if agent_filter == agent.id|stringformat:"s" %}selected{% endif %}>{{ agent.get_full_name|default:agent.username }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn-primary" style="padding:9px 20px;">Filter</button>
+    <a href="{% url 'leads:lead_list' %}" class="btn-secondary" style="padding:9px 16px;">Clear</a>
+  </div>
+</form>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th><th>Phone</th><th>Email</th><th>Company</th>
+          <th>Status</th><th>Agent</th><th>Source</th><th>Added</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lead in page_obj %}
+        <tr>
+          <td><span style="font-weight:600;">{{ lead.name }}</span></td>
+          <td style="color:var(--gray-400);">{{ lead.phone }}</td>
+          <td style="color:var(--gray-400);font-size:13px;">{{ lead.email|default:"—" }}</td>
+          <td style="color:var(--gray-400);">{{ lead.company|default:"—" }}</td>
+          <td>
+            <span class="badge {% if lead.status == 'converted' %}badge-green{% elif lead.status == 'contacted' %}badge-blue{% elif lead.status == 'new' %}badge-orange{% elif lead.status == 'not_interested' %}badge-red{% else %}badge-gray{% endif %}">
+              {{ lead.get_status_display }}
+            </span>
+          </td>
+          <td style="font-size:13px;">{{ lead.assigned_agent.get_full_name|default:"Unassigned" }}</td>
+          <td style="color:var(--gray-400);font-size:12px;">{{ lead.source|default:"—" }}</td>
+          <td style="color:var(--gray-400);font-size:12px;">{{ lead.created_at|date:"M d, Y" }}</td>
+          <td>
+            <a href="{% url 'leads:lead_detail' lead.id %}" class="btn-secondary" style="padding:5px 12px;font-size:12px;">View</a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9">
+          <div class="empty-state">
+            <svg width="48" height="48" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="1.5"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/></svg>
+            <h3>No leads found</h3>
+            <p>Upload leads or adjust your filters.</p>
+          </div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  {% if page_obj.has_other_pages %}
+  <div style="display:flex;justify-content:center;gap:8px;padding-top:20px;margin-top:8px;border-top:1px solid var(--gray-200);">
+    {% if page_obj.has_previous %}
+    <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="btn-secondary" style="padding:6px 14px;font-size:13px;">← Prev</a>
+    {% endif %}
+    <span style="padding:6px 14px;font-size:13px;color:var(--gray-400);">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+    <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="btn-secondary" style="padding:6px 14px;font-size:13px;">Next →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}Activity Detail – {{ agent.get_full_name }} – DialEasy{% endblock %}
+{% block page_title %}Activity Detail{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'agents:agent_activity_list' %}" class="btn-secondary">← Back</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-info">
+    <h2>{{ agent.get_full_name|default:agent.username }}</h2>
+    <p>Session timeline: {{ start_date|date:"M d" }} – {{ end_date|date:"M d, Y" }}</p>
+  </div>
+  <div class="page-header-actions">
+    <form method="get" style="display:flex;gap:10px;align-items:center;">
+      <input class="form-input" type="date" name="start" value="{{ start_date|date:'Y-m-d' }}" style="width:160px;"/>
+      <input class="form-input" type="date" name="end" value="{{ end_date|date:'Y-m-d' }}" style="width:160px;"/>
+      <button type="submit" class="btn-primary" style="padding:9px 16px;">Apply</button>
+    </form>
+  </div>
+</div>
+
+<!-- Daily Chart -->
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <div class="card-title">Daily Time Breakdown</div>
+  </div>
+  <canvas id="activityChart" height="160"></canvas>
+</div>
+
+<!-- Sessions -->
+{% for session in sessions %}
+<div class="card" style="margin-bottom:14px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+    <div>
+      <div style="font-size:15px;font-weight:700;">{{ session.session_start|date:"M d, Y" }} &nbsp;·&nbsp; <span style="color:var(--gray-400);">{{ session.session_start|time:"H:i" }}</span>
+        {% if session.session_end %}– <span style="color:var(--gray-400);">{{ session.session_end|time:"H:i" }}</span>{% endif %}
+      </div>
+      <div style="font-size:13px;color:var(--gray-400);margin-top:3px;">
+        Duration: <strong>{{ session.session_duration_seconds|floatformat:0 }}s</strong> &nbsp;·&nbsp;
+        Calls: <strong>{{ session.total_calls_made }}</strong> &nbsp;·&nbsp;
+        Call Time: <strong>{{ session.total_call_time_seconds }}s</strong>
+      </div>
+    </div>
+    <span class="badge {% if not session.session_end %}badge-green{% else %}badge-gray{% endif %}">
+      {% if not session.session_end %}Active{% else %}Ended{% endif %}
+    </span>
+  </div>
+
+  {% if session.events.all %}
+  <div class="timeline" style="max-height:240px;overflow-y:auto;">
+    {% for event in session.events.all %}
+    <div class="timeline-item">
+      <div class="timeline-dot {% cycle 'orange' 'blue' 'green' %}"></div>
+      <div class="timeline-time">{{ event.timestamp|time:"H:i:s" }}</div>
+      <div class="timeline-text">{{ event.event_type|capfirst|replace:"_":" " }}</div>
+      {% if event.details %}<div class="timeline-sub">{{ event.details|truncatewords:12 }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p style="color:var(--gray-400);font-size:13px;">No detailed events recorded.</p>
+  {% endif %}
+</div>
+{% empty %}
+<div class="card">
+  <div class="empty-state">
+    <svg width="48" height="48" fill="none" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <h3>No sessions found</h3>
+    <p>No dialer sessions recorded in this date range.</p>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const labels = [{% for d in daily_data %}'{{ d.date }}',{% endfor %}];
+  const session = [{% for d in daily_data %}{{ d.session_secs }},{% endfor %}];
+  const calls   = [{% for d in daily_data %}{{ d.call_secs }},{% endfor %}];
+  const disp    = [{% for d in daily_data %}{{ d.disp_secs }},{% endfor %}];
+  new Chart(document.getElementById('activityChart').getContext('2d'), {
+    type:'bar',
+    data:{labels:labels,datasets:[
+      {label:'Total Session (s)',data:session,backgroundColor:'rgba(232,227,217,0.8)',borderRadius:6,borderSkipped:false},
+      {label:'Call Time (s)',data:calls,backgroundColor:'rgba(255,122,47,0.85)',borderRadius:6,borderSkipped:false},
+      {label:'Disp. Time (s)',data:disp,backgroundColor:'rgba(59,130,246,0.7)',borderRadius:6,borderSkipped:false}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Inter',size:12},usePointStyle:true}}},scales:{x:{grid:{display:false},stacked:false},y:{grid:{color:'#F5F3EF'},ticks:{font:{size:11}}}}}
+  });
+})();
+</script>
+{% endblock %}

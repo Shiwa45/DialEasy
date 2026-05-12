@@ -1,0 +1,220 @@
+# tenants/models.py
+# ─────────────────────────────────────────────────────────────────────────────
+# PUBLIC SCHEMA MODELS — these live in the shared (public) PostgreSQL schema.
+# They are visible to ALL tenants and the super admin.
+# ─────────────────────────────────────────────────────────────────────────────
+
+from django.db import models
+from django.contrib.auth.models import User
+from django_tenants.models import TenantMixin, DomainMixin
+from django.utils import timezone
+
+
+# ─── Feature ─────────────────────────────────────────────────────────────────
+
+class Feature(models.Model):
+    """
+    Represents a single CRM feature that can be included in a Plan.
+    Super admin manages this list.
+
+    Examples:
+        whatsapp_api, ai_chatbot, call_recording, email_ai,
+        ai_transcription, advanced_reports, bulk_broadcast
+    """
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(
+        max_length=100,
+        unique=True,
+        help_text='Machine-readable key used in @require_feature decorator and Flutter feature checks. e.g. whatsapp_api'
+    )
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Inactive features are hidden from all plans globally.'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'tenants'
+        ordering = ['name']
+        verbose_name = 'Feature'
+        verbose_name_plural = 'Features'
+
+    def __str__(self):
+        return f'{self.name} ({self.slug})'
+
+
+# ─── Plan ─────────────────────────────────────────────────────────────────────
+
+class Plan(models.Model):
+    """
+    A subscription plan (e.g. Free, Starter, Pro, Enterprise).
+    Super admin creates plans and assigns features to them.
+    """
+    BILLING_CYCLE_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('annual', 'Annual'),
+    ]
+
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    price_monthly = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    price_annual = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    max_agents = models.IntegerField(
+        default=5,
+        help_text='Maximum number of agent accounts allowed for this plan. -1 = unlimited.'
+    )
+    max_leads = models.IntegerField(
+        default=1000,
+        help_text='Maximum leads per tenant. -1 = unlimited.'
+    )
+    is_active = models.BooleanField(default=True)
+    is_public = models.BooleanField(
+        default=True,
+        help_text='Public plans show on the pricing page. Private plans are enterprise-only.'
+    )
+    sort_order = models.IntegerField(default=0)
+    features = models.ManyToManyField(
+        Feature,
+        blank=True,
+        related_name='plans',
+        help_text='Features included in this plan.'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'tenants'
+        ordering = ['sort_order', 'price_monthly']
+        verbose_name = 'Plan'
+        verbose_name_plural = 'Plans'
+
+    def __str__(self):
+        return self.name
+
+    def get_feature_slugs(self):
+        """Returns a set of feature slugs included in this plan."""
+        return set(self.features.filter(is_active=True).values_list('slug', flat=True))
+
+
+# ─── Client (Tenant) ──────────────────────────────────────────────────────────
+
+class Client(TenantMixin):
+    """
+    Represents one tenant (a company that subscribes to TeleCRM).
+    Each Client gets its own isolated PostgreSQL schema.
+
+    TenantMixin provides:
+        schema_name  — the PostgreSQL schema name (e.g. 'acme')
+        auto_create_schema — set True to create schema on save
+    """
+    name = models.CharField(max_length=200, help_text='Company / Organisation name')
+    owner_email = models.EmailField(help_text='Primary contact email of the tenant owner')
+    phone = models.CharField(max_length=20, blank=True)
+    address = models.TextField(blank=True)
+    logo = models.ImageField(upload_to='tenant_logos/', null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # TenantMixin requires this
+    auto_create_schema = True
+
+    class Meta:
+        app_label = 'tenants'
+        verbose_name = 'Tenant'
+        verbose_name_plural = 'Tenants'
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def active_subscription(self):
+        return self.subscriptions.filter(is_active=True).select_related('plan').first()
+
+    @property
+    def current_plan(self):
+        sub = self.active_subscription
+        return sub.plan if sub else None
+
+    def has_feature(self, feature_slug: str) -> bool:
+        """Check if this tenant's active plan includes the given feature slug."""
+        plan = self.current_plan
+        if plan is None:
+            return False
+        return feature_slug in plan.get_feature_slugs()
+
+    def get_enabled_features(self):
+        """Return list of feature slugs enabled for this tenant."""
+        plan = self.current_plan
+        if plan is None:
+            return []
+        return list(plan.get_feature_slugs())
+
+
+# ─── Domain ───────────────────────────────────────────────────────────────────
+
+class Domain(DomainMixin):
+    """
+    Maps a hostname/subdomain to a tenant.
+    DomainMixin provides:
+        tenant (FK to Client)
+        domain  (the hostname string, e.g. 'acme.telecrm.com')
+        is_primary (bool)
+    """
+    class Meta:
+        app_label = 'tenants'
+        verbose_name = 'Domain'
+        verbose_name_plural = 'Domains'
+
+    def __str__(self):
+        return self.domain
+
+
+# ─── TenantSubscription ───────────────────────────────────────────────────────
+
+class TenantSubscription(models.Model):
+    """
+    Links a tenant to a plan with billing lifecycle tracking.
+    """
+    BILLING_CYCLE_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('annual', 'Annual'),
+    ]
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('trialing', 'Trialing'),
+        ('past_due', 'Past Due'),
+        ('cancelled', 'Cancelled'),
+        ('expired', 'Expired'),
+    ]
+
+    tenant = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='subscriptions')
+    plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='trialing')
+    billing_cycle = models.CharField(max_length=10, choices=BILLING_CYCLE_CHOICES, default='monthly')
+    is_active = models.BooleanField(default=True)
+    trial_ends_at = models.DateTimeField(null=True, blank=True)
+    current_period_start = models.DateTimeField(default=timezone.now)
+    current_period_end = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, help_text='Internal super-admin notes about this subscription.')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'tenants'
+        ordering = ['-created_at']
+        verbose_name = 'Tenant Subscription'
+        verbose_name_plural = 'Tenant Subscriptions'
+
+    def __str__(self):
+        return f'{self.tenant.name} → {self.plan.name} ({self.status})'
+
+    @property
+    def is_expired(self):
+        if self.current_period_end:
+            return timezone.now() > self.current_period_end
+        return False

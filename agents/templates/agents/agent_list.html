@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block title %}Agents – DialEasy{% endblock %}
+{% block page_title %}Agents{% endblock %}
+
+{% block topbar_actions %}
+<a href="{% url 'agents:create_agent' %}" class="btn-primary">
+  <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+  Add Agent
+</a>
+{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card orange">
+    <div class="stat-icon orange">
+      <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </div>
+    <div class="stat-value">{{ total_agents }}</div>
+    <div class="stat-label">Total Agents</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="stat-icon blue">
+      <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/></svg>
+    </div>
+    <div class="stat-value">{{ total_leads_assigned }}</div>
+    <div class="stat-label">Leads Assigned</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon green">
+      <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </div>
+    <div class="stat-value">{{ total_calls_made }}</div>
+    <div class="stat-label">Total Calls</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="stat-icon purple">
+      <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="stat-value">{{ total_conversions }}</div>
+    <div class="stat-label">Total Conversions</div>
+    <div class="stat-change up">{{ avg_conversion_rate }}% avg rate</div>
+  </div>
+</div>
+
+<!-- Agent Grid -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+  {% for agent in page_obj %}
+  <a href="{% url 'agents:agent_detail' agent.id %}" style="text-decoration:none;">
+    <div class="card" style="transition:all .25s ease;cursor:pointer;" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 12px 32px rgba(255,122,47,.1)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+        <div class="avatar" style="width:52px;height:52px;font-size:17px;background:var(--orange-lt);color:var(--orange);">
+          {{ agent.first_name|first|upper }}{{ agent.last_name|first|upper }}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:15px;font-weight:700;color:var(--gray-700);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ agent.get_full_name|default:agent.username }}</div>
+          <div style="font-size:12px;color:var(--gray-400);">@{{ agent.username }}</div>
+          <span class="badge {% if agent.agent_profile.is_active %}badge-green{% else %}badge-red{% endif %}" style="margin-top:4px;">
+            {% if agent.agent_profile.is_active %}Active{% else %}Inactive{% endif %}
+          </span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-top:1px solid var(--gray-200);padding-top:14px;text-align:center;">
+        <div>
+          <div style="font-size:18px;font-weight:800;color:var(--orange);">{{ agent.total_leads }}</div>
+          <div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Leads</div>
+        </div>
+        <div style="border-left:1px solid var(--gray-200);border-right:1px solid var(--gray-200);">
+          <div style="font-size:18px;font-weight:800;color:#3B82F6;">{{ agent.total_calls }}</div>
+          <div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Calls</div>
+        </div>
+        <div>
+          <div style="font-size:18px;font-weight:800;color:var(--green-dk);">{{ agent.conversion_rate }}%</div>
+          <div style="font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">Conv.</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;">
+          <span style="color:var(--gray-400);">Today's Calls</span>
+          <span style="font-weight:700;color:var(--gray-700);">{{ agent.today_calls }}</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:{% widthratio agent.today_calls agent.agent_profile.target_calls_per_day 100 %}%;background:var(--orange);max-width:100%;"></div>
+        </div>
+      </div>
+    </div>
+  </a>
+  {% empty %}
+  <div style="grid-column:span 3;">
+    <div class="empty-state card">
+      <svg width="48" height="48" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <h3>No agents yet</h3>
+      <p>Add your first agent to get started.</p>
+      <a href="{% url 'agents:create_agent' %}" class="btn-primary" style="margin-top:16px;">Add Agent</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if page_obj.has_other_pages %}
+<div style="display:flex;justify-content:center;gap:8px;padding-top:24px;">
+  {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}" class="btn-secondary" style="padding:6px 14px;font-size:13px;">← Prev</a>{% endif %}
+  <span style="padding:6px 14px;font-size:13px;color:var(--gray-400);">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}" class="btn-secondary" style="padding:6px 14px;font-size:13px;">Next →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

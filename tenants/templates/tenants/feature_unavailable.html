@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Feature Unavailable – DialEasy{% endblock %}
+{% block page_title %}Feature Unavailable{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:center;min-height:60vh;">
+  <div style="text-align:center;max-width:480px;">
+    <div style="width:80px;height:80px;border-radius:24px;background:var(--orange-lt);display:flex;align-items:center;justify-content:center;margin:0 auto 24px;">
+      <svg width="40" height="40" fill="none" viewBox="0 0 24 24">
+        <path d="M12 2L3 7l9 5 9-5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1 style="font-size:28px;font-weight:800;color:var(--gray-700);margin-bottom:12px;">Feature Unavailable</h1>
+    <p style="font-size:15px;color:var(--gray-400);line-height:1.7;margin-bottom:8px;">
+      <strong style="color:var(--orange);">{{ feature_name|default:"This feature" }}</strong> is not available on your current plan.
+    </p>
+    <p style="font-size:14px;color:var(--gray-400);line-height:1.7;margin-bottom:32px;">
+      Upgrade your plan to unlock this and other premium features for your team.
+    </p>
+    <div style="padding:20px 24px;background:var(--gray-50);border-radius:16px;border:1px solid var(--gray-200);margin-bottom:28px;">
+      <div style="font-size:13px;font-weight:700;color:var(--gray-700);margin-bottom:12px;">Your current plan</div>
+      <div style="font-size:24px;font-weight:800;color:var(--orange);">{{ current_plan|default:"Starter" }}</div>
+      {% if required_plan %}
+      <div style="font-size:13px;color:var(--gray-400);margin-top:6px;">Required: <strong style="color:var(--gray-700);">{{ required_plan }}</strong> plan or higher</div>
+      {% endif %}
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+      <a href="javascript:history.back()" class="btn-secondary">← Go Back</a>
+      <a href="{% url 'leads:dashboard' %}" class="btn-primary">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2" stroke="currentColor" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="2" stroke="currentColor" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="2" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="2" stroke="currentColor" stroke-width="2"/></svg>
+        Go to Dashboard
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
