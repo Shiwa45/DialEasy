@@ -1,209 +1,237 @@
 # tenants/admin.py
 # ─────────────────────────────────────────────────────────────────────────────
-# Super Admin panel — only accessible from the public schema (admin.telecrm.com
-# or /superadmin/). Regular tenant admins NEVER see these models.
+# Super Admin site — only accessible by is_superuser users.
+# Uses a SEPARATE AdminSite instance so tenant admins NEVER see these models.
+#
+# Previous approach used `if connection.schema_name == get_public_schema_name()`
+# at module import time, which always evaluated True at Django startup and
+# registered super-admin models into the shared admin.site — making them
+# visible to all tenant admins. That check has been removed entirely.
 # ─────────────────────────────────────────────────────────────────────────────
 
+from django.contrib.admin import AdminSite
 from django.contrib import admin
 from django.utils.html import format_html
-from django.db import connection
-from django_tenants.utils import get_public_schema_name
 from .models import Client, Domain, Plan, Feature, TenantSubscription
 
-# ─── Security Check ───────────────────────────────────────────────────────────
-# We only register these models if we are in the PUBLIC schema.
-# This prevents tenant admins from seeing or deleting other tenants.
-# ──────────────────────────────────────────────────────────────────────────────
 
-if connection.schema_name == get_public_schema_name():
-    # ─── Feature Admin ────────────────────────────────────────────────────────────
-    @admin.register(Feature)
-    class FeatureAdmin(admin.ModelAdmin):
-        list_display = ['name', 'slug', 'is_active', 'plans_count', 'updated_at']
-        list_filter = ['is_active']
-        search_fields = ['name', 'slug', 'description']
-        prepopulated_fields = {'slug': ('name',)}
-        readonly_fields = ['created_at', 'updated_at']
+# ─── Super Admin Site ────────────────────────────────────────────────────────
 
-        fieldsets = (
-            ('Feature Details', {
-                'fields': ('name', 'slug', 'description', 'is_active')
-            }),
-            ('Timestamps', {
-                'fields': ('created_at', 'updated_at'),
-                'classes': ('collapse',)
-            }),
+class SuperAdminSite(AdminSite):
+    """
+    Separate admin site for platform-level management.
+    Only users with is_superuser=True can log in here.
+    Tenant admins (is_staff=True, is_superuser=False) are blocked at the gate.
+    """
+    site_header = 'DialEasy Super Admin'
+    site_title = 'DialEasy Super Admin'
+    index_title = 'Tenant & Plan Management'
+
+    def has_permission(self, request):
+        return request.user.is_active and request.user.is_superuser
+
+
+super_admin_site = SuperAdminSite(name='super_admin')
+
+
+# ─── Feature Admin ────────────────────────────────────────────────────────────
+
+class FeatureAdmin(admin.ModelAdmin):
+    list_display = ['name', 'slug', 'is_active', 'plans_count', 'updated_at']
+    list_filter = ['is_active']
+    search_fields = ['name', 'slug', 'description']
+    prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ['created_at', 'updated_at']
+
+    fieldsets = (
+        ('Feature Details', {
+            'fields': ('name', 'slug', 'description', 'is_active')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def plans_count(self, obj):
+        count = obj.plans.count()
+        return format_html('<span style="color: #1D9E75; font-weight: bold;">{}</span>', count)
+    plans_count.short_description = 'Used in Plans'
+
+
+# ─── Plan Admin ───────────────────────────────────────────────────────────────
+
+class FeatureInline(admin.TabularInline):
+    model = Plan.features.through
+    extra = 1
+    verbose_name = 'Included Feature'
+    verbose_name_plural = 'Included Features'
+
+
+class PlanAdmin(admin.ModelAdmin):
+    list_display = [
+        'name', 'slug', 'price_monthly', 'price_annual',
+        'max_agents', 'max_leads', 'feature_count',
+        'active_subscribers', 'is_active', 'is_public', 'sort_order'
+    ]
+    list_filter = ['is_active', 'is_public']
+    search_fields = ['name', 'slug', 'description']
+    prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ['created_at', 'updated_at']
+    filter_horizontal = ['features']
+
+    fieldsets = (
+        ('Plan Details', {
+            'fields': ('name', 'slug', 'description', 'sort_order')
+        }),
+        ('Pricing', {
+            'fields': ('price_monthly', 'price_annual')
+        }),
+        ('Limits', {
+            'fields': ('max_agents', 'max_leads')
+        }),
+        ('Features Included', {
+            'fields': ('features',),
+            'description': 'Select which features are available in this plan.'
+        }),
+        ('Visibility', {
+            'fields': ('is_active', 'is_public')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def feature_count(self, obj):
+        return obj.features.filter(is_active=True).count()
+    feature_count.short_description = 'Features'
+
+    def active_subscribers(self, obj):
+        count = obj.subscriptions.filter(is_active=True).count()
+        return format_html('<span style="font-weight: bold;">{}</span>', count)
+    active_subscribers.short_description = 'Active Tenants'
+
+
+# ─── Subscription Inline ──────────────────────────────────────────────────────
+
+class TenantSubscriptionInline(admin.StackedInline):
+    model = TenantSubscription
+    extra = 0
+    readonly_fields = ['created_at', 'updated_at']
+    fields = [
+        'plan', 'status', 'billing_cycle', 'is_active',
+        'trial_ends_at', 'current_period_start', 'current_period_end',
+        'notes', 'created_at', 'updated_at'
+    ]
+
+
+# ─── Domain Inline ───────────────────────────────────────────────────────────
+
+class DomainInline(admin.TabularInline):
+    model = Domain
+    extra = 1
+    fields = ['domain', 'is_primary']
+
+
+# ─── Client (Tenant) Admin ───────────────────────────────────────────────────
+
+class ClientAdmin(admin.ModelAdmin):
+    list_display = [
+        'name', 'schema_name', 'owner_email',
+        'current_plan_display', 'subscription_status',
+        'is_active', 'created_at'
+    ]
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['name', 'schema_name', 'owner_email']
+    readonly_fields = ['created_at', 'updated_at']
+    inlines = [DomainInline, TenantSubscriptionInline]
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj:
+            return self.readonly_fields + ['schema_name']
+        return self.readonly_fields
+
+    fieldsets = (
+        ('Tenant Information', {
+            'fields': ('name', 'schema_name', 'owner_email', 'phone', 'address', 'logo', 'is_active')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def current_plan_display(self, obj):
+        plan = obj.current_plan
+        if plan:
+            return format_html('<span style="color: #185FA5; font-weight: bold;">{}</span>', plan.name)
+        return format_html('<span style="color: #A32D2D;">No Plan</span>')
+    current_plan_display.short_description = 'Current Plan'
+
+    def subscription_status(self, obj):
+        sub = obj.active_subscription
+        if not sub:
+            return format_html('<span style="color: #A32D2D;">No Subscription</span>')
+        colors = {
+            'active': '#1D9E75',
+            'trialing': '#BA7517',
+            'past_due': '#D85A30',
+            'cancelled': '#A32D2D',
+            'expired': '#888780',
+        }
+        color = colors.get(sub.status, '#888780')
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}</span>',
+            color, sub.get_status_display()
         )
-
-        def plans_count(self, obj):
-            count = obj.plans.count()
-            return format_html('<span style="color: #1D9E75; font-weight: bold;">{}</span>', count)
-        plans_count.short_description = 'Used in Plans'
+    subscription_status.short_description = 'Subscription'
 
 
-    # ─── Plan Admin ───────────────────────────────────────────────────────────────
+# ─── Subscription Admin ───────────────────────────────────────────────────────
 
-    class FeatureInline(admin.TabularInline):
-        model = Plan.features.through
-        extra = 1
-        verbose_name = 'Included Feature'
-        verbose_name_plural = 'Included Features'
+class TenantSubscriptionAdmin(admin.ModelAdmin):
+    list_display = [
+        'tenant', 'plan', 'status', 'billing_cycle',
+        'is_active', 'current_period_start', 'current_period_end'
+    ]
+    list_filter = ['status', 'billing_cycle', 'is_active', 'plan']
+    search_fields = ['tenant__name', 'plan__name']
+    readonly_fields = ['created_at', 'updated_at']
+    raw_id_fields = ['tenant', 'plan']
 
+    fieldsets = (
+        ('Subscription Details', {
+            'fields': ('tenant', 'plan', 'status', 'billing_cycle', 'is_active')
+        }),
+        ('Billing Period', {
+            'fields': ('trial_ends_at', 'current_period_start', 'current_period_end', 'cancelled_at')
+        }),
+        ('Notes', {
+            'fields': ('notes',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
 
-    @admin.register(Plan)
-    class PlanAdmin(admin.ModelAdmin):
-        list_display = [
-            'name', 'slug', 'price_monthly', 'price_annual',
-            'max_agents', 'max_leads', 'feature_count',
-            'active_subscribers', 'is_active', 'is_public', 'sort_order'
-        ]
-        list_filter = ['is_active', 'is_public']
-        search_fields = ['name', 'slug', 'description']
-        prepopulated_fields = {'slug': ('name',)}
-        readonly_fields = ['created_at', 'updated_at']
-        filter_horizontal = ['features']
+    actions = ['mark_active', 'mark_cancelled']
 
-        fieldsets = (
-            ('Plan Details', {
-                'fields': ('name', 'slug', 'description', 'sort_order')
-            }),
-            ('Pricing', {
-                'fields': ('price_monthly', 'price_annual')
-            }),
-            ('Limits', {
-                'fields': ('max_agents', 'max_leads')
-            }),
-            ('Features Included', {
-                'fields': ('features',),
-                'description': 'Select which features are available in this plan.'
-            }),
-            ('Visibility', {
-                'fields': ('is_active', 'is_public')
-            }),
-            ('Timestamps', {
-                'fields': ('created_at', 'updated_at'),
-                'classes': ('collapse',)
-            }),
-        )
+    def mark_active(self, request, queryset):
+        queryset.update(status='active', is_active=True)
+        self.message_user(request, f'{queryset.count()} subscription(s) marked as active.')
+    mark_active.short_description = 'Mark selected as Active'
 
-        def feature_count(self, obj):
-            return obj.features.filter(is_active=True).count()
-        feature_count.short_description = 'Features'
-
-        def active_subscribers(self, obj):
-            count = obj.subscriptions.filter(is_active=True).count()
-            return format_html('<span style="font-weight: bold;">{}</span>', count)
-        active_subscribers.short_description = 'Active Tenants'
+    def mark_cancelled(self, request, queryset):
+        queryset.update(status='cancelled', is_active=False)
+        self.message_user(request, f'{queryset.count()} subscription(s) cancelled.')
+    mark_cancelled.short_description = 'Mark selected as Cancelled'
 
 
-    # ─── Subscription Inline ──────────────────────────────────────────────────────
+# ─── Register on super_admin_site ONLY — never on admin.site ─────────────────
 
-    class TenantSubscriptionInline(admin.StackedInline):
-        model = TenantSubscription
-        extra = 0
-        readonly_fields = ['created_at', 'updated_at']
-        fields = [
-            'plan', 'status', 'billing_cycle', 'is_active',
-            'trial_ends_at', 'current_period_start', 'current_period_end',
-            'notes', 'created_at', 'updated_at'
-        ]
-
-
-    # ─── Domain Inline ───────────────────────────────────────────────────────────
-
-    class DomainInline(admin.TabularInline):
-        model = Domain
-        extra = 1
-        fields = ['domain', 'is_primary']
-
-
-    # ─── Client (Tenant) Admin ───────────────────────────────────────────────────
-
-    @admin.register(Client)
-    class ClientAdmin(admin.ModelAdmin):
-        list_display = [
-            'name', 'schema_name', 'owner_email',
-            'current_plan_display', 'subscription_status',
-            'is_active', 'created_at'
-        ]
-        list_filter = ['is_active', 'created_at']
-        search_fields = ['name', 'schema_name', 'owner_email']
-        readonly_fields = ['created_at', 'updated_at']
-        inlines = [DomainInline, TenantSubscriptionInline]
-
-        def get_readonly_fields(self, request, obj=None):
-            if obj:  # editing an existing object
-                return self.readonly_fields + ['schema_name']
-            return self.readonly_fields
-
-        fieldsets = (
-            ('Tenant Information', {
-                'fields': ('name', 'schema_name', 'owner_email', 'phone', 'address', 'logo', 'is_active')
-            }),
-            ('Timestamps', {
-                'fields': ('created_at', 'updated_at'),
-                'classes': ('collapse',)
-            }),
-        )
-
-        def current_plan_display(self, obj):
-            plan = obj.current_plan
-            if plan:
-                return format_html('<span style="color: #185FA5; font-weight: bold;">{}</span>', plan.name)
-            return format_html('<span style="color: #A32D2D;">No Plan</span>')
-        current_plan_display.short_description = 'Current Plan'
-
-        def subscription_status(self, obj):
-            sub = obj.active_subscription
-            if not sub:
-                return format_html('<span style="color: #A32D2D;">No Subscription</span>')
-            colors = {
-                'active': '#1D9E75',
-                'trialing': '#BA7517',
-                'past_due': '#D85A30',
-                'cancelled': '#A32D2D',
-                'expired': '#888780',
-            }
-            color = colors.get(sub.status, '#888780')
-            return format_html(
-                '<span style="color: {}; font-weight: bold;">{}</span>',
-                color, sub.get_status_display()
-            )
-        subscription_status.short_description = 'Subscription'
-
-
-    # ─── Subscription Admin ───────────────────────────────────────────────────────
-
-    @admin.register(TenantSubscription)
-    class TenantSubscriptionAdmin(admin.ModelAdmin):
-        list_display = [
-            'tenant', 'plan', 'status', 'billing_cycle',
-            'is_active', 'current_period_start', 'current_period_end'
-        ]
-        list_filter = ['status', 'billing_cycle', 'is_active', 'plan']
-        search_fields = ['tenant__name', 'plan__name']
-        readonly_fields = ['created_at', 'updated_at']
-        raw_id_fields = ['tenant', 'plan']
-
-        fieldsets = (
-            ('Subscription Details', {
-                'fields': ('tenant', 'plan', 'status', 'billing_cycle', 'is_active')
-            }),
-            ('Billing Period', {
-                'fields': ('trial_ends_at', 'current_period_start', 'current_period_end', 'cancelled_at')
-            }),
-            ('Notes', {
-                'fields': ('notes',)
-            }),
-            ('Timestamps', {
-                'fields': ('created_at', 'updated_at'),
-                'classes': ('collapse',)
-            }),
-        )
-
-        actions = ['mark_active', 'mark_cancelled']
-
-        def mark_active(self, request, queryset):
-            queryset.update(status='active', is_active=True)
-            self.message_user(request, f'{queryset.count()} subscription(s) marked as active.')
-        mark_active.short_description = 'Mark selected as Active'
+super_admin_site.register(Feature, FeatureAdmin)
+super_admin_site.register(Plan, PlanAdmin)
+super_admin_site.register(Client, ClientAdmin)
+super_admin_site.register(TenantSubscription, TenantSubscriptionAdmin)

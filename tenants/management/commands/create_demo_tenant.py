@@ -75,5 +75,6 @@ class Command(BaseCommand):
         # via the Client model's save() method, along with their AgentProfile.
         
         self.stdout.write(f'Admin Username: admin_{schema_name}')
-        self.stdout.write('Admin Password: password123 (Change this immediately!)')
+        self.stdout.write('Admin Password: check application logs (WARNING level) for the temporary password.')
+        self.stdout.write('  The tenant admin should change this password on first login.')
         self.stdout.write(f'Note: You may need to add "{domain_str}" to your hosts file if using subdomains.')

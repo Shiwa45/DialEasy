@@ -137,26 +137,36 @@ class Client(TenantMixin):
 
         # If it's a new tenant, automatically create an admin user for them
         if is_new and self.schema_name != 'public':
+            import secrets
+            import logging
             from django_tenants.utils import schema_context
             from django.contrib.auth.models import User
-            
+
+            logger = logging.getLogger(__name__)
+
             with schema_context(self.schema_name):
-                # Create a default admin for this tenant
                 admin_username = f"admin_{self.schema_name}"
                 if not User.objects.filter(username=admin_username).exists():
+                    temp_password = secrets.token_urlsafe(16)
                     user = User.objects.create_user(
                         username=admin_username,
                         email=self.owner_email,
-                        password='password123',
-                        is_staff=True,  # Allows login to admin panel
-                        is_superuser=False # Critical: Prevent global superuser access
+                        password=temp_password,
+                        is_staff=True,      # Allows login to tenant admin panel
+                        is_superuser=False  # Must never be True — prevents global access
                     )
-                    # Create the AgentProfile with 'admin' role in this tenant
                     from agents.models import AgentProfile
                     AgentProfile.objects.create(
                         user=user,
                         role='admin',
                         is_active=True
+                    )
+                    # Log the temporary password so the super admin can relay it.
+                    # The tenant admin should change this on first login.
+                    logger.warning(
+                        "New tenant '%s' created. Temporary admin credentials — "
+                        "username: %s  password: %s  — share securely and require a reset.",
+                        self.name, admin_username, temp_password
                     )
 
     class Meta:

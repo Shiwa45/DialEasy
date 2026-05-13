@@ -15,12 +15,19 @@ class AgentProfileInline(admin.StackedInline):
 # Extend the existing User admin
 class UserAdmin(BaseUserAdmin):
     inlines = (AgentProfileInline,)
-    
-    def get_queryset(self, request):
-        # Only show non-staff users (agents) in this admin
-        return super().get_queryset(request).filter(is_staff=False)
 
-# Re-register UserAdmin for agents
+    def get_queryset(self, request):
+        # Users live in the public schema shared across all tenants.
+        # Filter to only users who have an AgentProfile in the CURRENT tenant
+        # schema (AgentProfile is a TENANT_APP, so the queryset is automatically
+        # scoped to the active schema by django-tenants).
+        tenant_user_ids = AgentProfile.objects.values_list('user_id', flat=True)
+        return super().get_queryset(request).filter(
+            id__in=tenant_user_ids,
+            is_staff=False,
+        )
+
+# Re-register UserAdmin for the tenant admin panel
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 

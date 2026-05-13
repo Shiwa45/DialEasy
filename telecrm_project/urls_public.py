@@ -17,13 +17,14 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.shortcuts import redirect
 from django.contrib.auth import views as auth_views
+from tenants.admin import super_admin_site
 
 urlpatterns = [
-    # ── Super Admin ───────────────────────────────────────────────────────────
-    path('admin/', admin.site.urls),
+    # ── Super Admin (superusers only — see tenants/admin.py SuperAdminSite) ──
+    path('admin/', super_admin_site.urls),
 
-    # Redirect root to admin (only hits this on the admin domain, not api domain)
-    path('', lambda request: redirect('admin:index')),
+    # Redirect root to super admin (only hits this on the admin domain, not api domain)
+    path('', lambda request: redirect('super_admin:index')),
 
     # Auth (needed for admin login)
     path('accounts/login/', auth_views.LoginView.as_view(), name='login'),
