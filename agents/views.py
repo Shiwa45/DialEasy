@@ -23,9 +23,12 @@ def is_admin(user):
 def agent_list(request):
     """Display all agents with their basic stats"""
     
-    # Get all agents (non-staff users)
-    agents = User.objects.filter(is_staff=False, is_active=True).prefetch_related(
-        'assigned_leads', 'call_logs', 'follow_ups'
+    # Get all agents who have a profile in THIS tenant
+    agents = User.objects.filter(
+        agent_profile__isnull=False,
+        is_active=True
+    ).prefetch_related(
+        'assigned_leads', 'call_logs', 'follow_ups', 'agent_profile'
     ).annotate(
         total_leads=Count('assigned_leads'),
         total_calls=Count('call_logs'),
@@ -46,17 +49,6 @@ def agent_list(request):
             agent.conversion_rate = round((agent.converted_leads / agent.total_leads) * 100, 2)
         else:
             agent.conversion_rate = 0
-        
-        # Get or create agent profile - FIXED
-        try:
-            agent.agent_profile = agent.agent_profile
-        except AgentProfile.DoesNotExist:
-            agent.agent_profile = AgentProfile.objects.create(
-                user=agent,
-                hire_date=timezone.now().date(),
-                target_calls_per_day=50,
-                target_conversions_per_month=10
-            )
     
     # Pagination
     paginator = Paginator(agents, 12)
@@ -86,19 +78,10 @@ def agent_list(request):
 def agent_detail(request, agent_id):
     """Display detailed view of an agent"""
     
-    agent = get_object_or_404(User, id=agent_id, is_staff=False)
-    
-    # Get or create agent profile - FIXED
-    try:
-        agent_profile = agent.agent_profile
-    except AgentProfile.DoesNotExist:
-        agent_profile = AgentProfile.objects.create(
-            user=agent,
-            hire_date=timezone.now().date(),
-            target_calls_per_day=50,
-            target_conversions_per_month=10
-        )
-        agent_profile.update_stats()
+    # Ensure agent exists and HAS a profile in this tenant
+    agent = get_object_or_404(User, id=agent_id, agent_profile__isnull=False)
+    agent_profile = agent.agent_profile
+    agent_profile.update_stats()
     
     # Get agent's leads with status breakdown
     agent_leads = Lead.objects.filter(assigned_agent=agent)
@@ -199,6 +182,7 @@ def create_agent(request):
         password = request.POST.get('password', '')
         phone = request.POST.get('phone', '').strip()
         department = request.POST.get('department', '').strip()
+        role = request.POST.get('role', 'agent').strip()
         
         # Get targets with default values
         try:
@@ -253,6 +237,7 @@ def create_agent(request):
                 user=user,
                 phone=phone,
                 department=department,
+                role=role,
                 hire_date=timezone.now().date(),
                 target_calls_per_day=target_calls,
                 target_conversions_per_month=target_conversions,
@@ -759,4 +744,4 @@ def agent_activity_detail(request, agent_id):
 def _fmt(secs):
     """HH:MM:SS helper for templates."""
     h = secs // 3600; m = (secs % 3600) // 60; s = secs % 60
-    return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{h:02d}:{m:02d}:{s:02d}"

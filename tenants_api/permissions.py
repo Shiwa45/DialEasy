@@ -53,15 +53,20 @@ class IsTenantFeatureEnabled(BasePermission):
 
 class IsTenantStaff(BasePermission):
     """
-    Allows access only to is_staff users within the current tenant.
-    Useful for admin-only mobile endpoints (e.g. team management).
+    Allows access only to agents with 'admin' or 'manager' roles
+    within the current tenant schema.
     """
 
-    message = "Staff access required."
+    message = "Staff access required for this tenant."
 
     def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.is_staff
-        )
+        if not (request.user and request.user.is_authenticated):
+            return False
+            
+        # Check AgentProfile role in current schema
+        from agents.models import AgentProfile
+        try:
+            profile = request.user.agent_profile
+            return profile.role in ['admin', 'manager']
+        except AgentProfile.DoesNotExist:
+            return False

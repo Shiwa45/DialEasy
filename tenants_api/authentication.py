@@ -56,6 +56,13 @@ class JWTTenantAuthentication(JWTAuthentication):
         # ── Re-switch schema (idempotent if middleware already did it) ────────
         tenant = self._get_and_switch_tenant(tenant_slug)
 
+        # ── Verify Membership (Belt and suspenders) ──────────────────────────
+        from agents.models import AgentProfile
+        if not AgentProfile.objects.filter(user=user).exists():
+            raise exceptions.AuthenticationFailed(
+                f"You are no longer a member of tenant '{tenant_slug}'."
+            )
+
         # ── Attach tenant to request for use in views ─────────────────────────
         request.tenant = tenant
 

@@ -16,6 +16,14 @@ class AgentProfile(models.Model):
     target_conversions_per_month = models.IntegerField(default=10)
     call_recording_enabled = models.BooleanField(default=False)  # Admin toggle for call recording
     
+    # Role-based access control (tenant-specific)
+    ROLE_CHOICES = [
+        ('agent', 'Agent'),
+        ('manager', 'Manager'),
+        ('admin', 'Tenant Admin'),
+    ]
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='agent')
+    
     # Performance tracking
     total_leads_assigned = models.IntegerField(default=0)
     total_calls_made = models.IntegerField(default=0)
@@ -242,4 +250,4 @@ def _fmt_seconds(secs):
     h = secs // 3600
     m = (secs % 3600) // 60
     s = secs % 60
-    return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{h:02d}:{m:02d}:{s:02d}"

@@ -82,6 +82,13 @@ class TenantLoginSerializer(serializers.Serializer):
                 {"non_field_errors": "This user account has been disabled."}
             )
 
+        # ── Verify Membership (Is the user actually in this tenant?) ──────────
+        from agents.models import AgentProfile
+        if not AgentProfile.objects.filter(user=user).exists():
+            raise serializers.ValidationError(
+                {"non_field_errors": f"Access denied. You are not a member of '{tenant.name}'."}
+            )
+
         attrs["user"]        = user
         attrs["tenant"]      = tenant
         attrs["tenant_slug"] = tenant_slug
