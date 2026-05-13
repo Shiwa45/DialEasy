@@ -151,9 +151,13 @@ class Client(TenantMixin):
                         is_staff=True,  # Allows login to admin panel
                         is_superuser=False # Critical: Prevent global superuser access
                     )
-                    # Note: In a real app, you'd assign specific permissions here
-                    # For now, being is_staff in a tenant schema gives them full 
-                    # control over that tenant's apps but NOT the public schema.
+                    # Create the AgentProfile with 'admin' role in this tenant
+                    from agents.models import AgentProfile
+                    AgentProfile.objects.create(
+                        user=user,
+                        role='admin',
+                        is_active=True
+                    )
 
     class Meta:
         app_label = 'tenants'

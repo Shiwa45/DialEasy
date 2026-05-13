@@ -15,8 +15,20 @@ from leads.models import Lead, CallLog, FollowUp
 from .models import AgentProfile, AgentTarget, AgentNote, DialerSession, CallActivityEvent
 
 def is_admin(user):
-    """Check if user is admin/staff"""
-    return user.is_staff and user.is_active
+    """Check if user is admin/staff for this tenant"""
+    if not user.is_authenticated or not user.is_active:
+        return False
+    
+    # Global superusers always have access
+    if user.is_superuser:
+        return True
+        
+    # Check tenant-specific role in AgentProfile
+    try:
+        return user.agent_profile.role in ['admin', 'manager']
+    except Exception:
+        # Fallback to is_staff for legacy users or non-agent admins
+        return user.is_staff
 
 @login_required
 @user_passes_test(is_admin)

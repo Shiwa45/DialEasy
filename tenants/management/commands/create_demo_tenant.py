@@ -70,4 +70,10 @@ class Command(BaseCommand):
         self.stdout.write('')
         self.stdout.write(self.style.SUCCESS('Tenant setup complete!'))
         self.stdout.write(f'To access this tenant, use: http://{domain_str}:8000/admin/')
+        
+        # Note: The admin user (admin_{schema_name}) was automatically created 
+        # via the Client model's save() method, along with their AgentProfile.
+        
+        self.stdout.write(f'Admin Username: admin_{schema_name}')
+        self.stdout.write('Admin Password: password123 (Change this immediately!)')
         self.stdout.write(f'Note: You may need to add "{domain_str}" to your hosts file if using subdomains.')
