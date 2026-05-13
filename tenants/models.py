@@ -122,6 +122,39 @@ class Client(TenantMixin):
     # TenantMixin requires this
     auto_create_schema = True
 
+    def save(self, *args, **kwargs):
+        is_new = self._state.adding
+        # Auto-fix schema name to be PostgreSQL compatible
+        if self.schema_name:
+            import re
+            # Lowercase and replace non-alphanumeric with underscores
+            self.schema_name = re.sub(r'[^a-z0-9_]', '_', self.schema_name.lower())
+            # Ensure it starts with a letter
+            if self.schema_name and not self.schema_name[0].isalpha():
+                self.schema_name = 't_' + self.schema_name
+        
+        super().save(*args, **kwargs)
+
+        # If it's a new tenant, automatically create an admin user for them
+        if is_new and self.schema_name != 'public':
+            from django_tenants.utils import schema_context
+            from django.contrib.auth.models import User
+            
+            with schema_context(self.schema_name):
+                # Create a default admin for this tenant
+                admin_username = f"admin_{self.schema_name}"
+                if not User.objects.filter(username=admin_username).exists():
+                    user = User.objects.create_user(
+                        username=admin_username,
+                        email=self.owner_email,
+                        password='password123',
+                        is_staff=True,  # Allows login to admin panel
+                        is_superuser=False # Critical: Prevent global superuser access
+                    )
+                    # Note: In a real app, you'd assign specific permissions here
+                    # For now, being is_staff in a tenant schema gives them full 
+                    # control over that tenant's apps but NOT the public schema.
+
     class Meta:
         app_label = 'tenants'
         verbose_name = 'Tenant'
