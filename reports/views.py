@@ -9,6 +9,7 @@ import csv
 from datetime import timedelta
 from django.contrib.auth.models import User
 from agents.models import AgentProfile
+from tenants.models import Disposition
 from django.db.models import Count, Q, Sum, Avg, F, ExpressionWrapper, DurationField
 from django.http import HttpResponse
 from django.utils import timezone
@@ -263,6 +264,12 @@ def call_analytics(request):
         call_date__date__range=[start, end]
     )
 
+    # Build disposition label map from DB (one query, used below)
+    _disp_labels = {
+        d.value: d.label
+        for d in Disposition.objects.filter(is_active=True)
+    }
+
     # Disposition breakdown
     dispositions = list(
         calls.values('disposition')
@@ -270,7 +277,7 @@ def call_analytics(request):
         .order_by('-count')
     )
     for d in dispositions:
-        d['label'] = dict(CallLog.DISPOSITION_CHOICES).get(d['disposition'], d['disposition'])
+        d['label'] = _disp_labels.get(d['disposition'], d['disposition'])
 
     # Calls by hour of day
     from django.db.models.functions import ExtractHour

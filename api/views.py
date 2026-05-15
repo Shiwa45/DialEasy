@@ -618,14 +618,29 @@ def create_call_log(request, lead_id):
         
         if serializer.is_valid():
             call_log = serializer.save()
-            
-            # Update lead status if specified
-            new_status = request.data.get('lead_status')
-            if new_status and new_status in dict(Lead.STATUS_CHOICES):
-                lead.status = new_status
-                lead.save()
-            
-            return Response(CallLogSerializer(call_log).data, status=status.HTTP_201_CREATED)
+
+            # Apply disposition workflow rules
+            from tenants.models import Disposition
+            triggers_follow_up = False
+            try:
+                disp_config = Disposition.objects.get(value=call_log.disposition)
+                triggers_follow_up = disp_config.triggers_follow_up
+                # Auto-update lead status from disposition config (takes priority)
+                if disp_config.updates_lead_status:
+                    lead.status = disp_config.updates_lead_status
+                    lead.save()
+                elif request.data.get('lead_status') in dict(Lead.STATUS_CHOICES):
+                    lead.status = request.data['lead_status']
+                    lead.save()
+            except Disposition.DoesNotExist:
+                # Disposition not in DB yet — fall back to manual status update
+                if request.data.get('lead_status') in dict(Lead.STATUS_CHOICES):
+                    lead.status = request.data['lead_status']
+                    lead.save()
+
+            response_data = CallLogSerializer(call_log).data
+            response_data['triggers_follow_up'] = triggers_follow_up
+            return Response(response_data, status=status.HTTP_201_CREATED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
@@ -728,12 +743,22 @@ def lead_status_choices(request):
 @permission_classes([IsAuthenticated])
 def call_disposition_choices(request):
     """
-    Get available call disposition choices
-    
     GET /api/utils/call-disposition-choices/
+    Returns active dispositions from the DB (managed by super admin).
     """
+    from tenants.models import Disposition
+    dispositions = Disposition.objects.filter(is_active=True).order_by('sort_order', 'label')
     return Response({
-        'choices': [{'value': choice[0], 'label': choice[1]} for choice in CallLog.DISPOSITION_CHOICES]
+        'choices': [
+            {
+                'value': d.value,
+                'label': d.label,
+                'color': d.color,
+                'triggers_follow_up': d.triggers_follow_up,
+                'updates_lead_status': d.updates_lead_status or None,
+            }
+            for d in dispositions
+        ]
     })
 
 # ===============================
@@ -1376,6 +1401,22 @@ def bulk_assign_leads_api(request):
 # PHASE 1: ENHANCED app_config (adds score + deal fields info)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _get_dispositions_for_config():
+    """Return disposition list from DB for app_config and call-disposition-choices."""
+    from tenants.models import Disposition
+    dispositions = Disposition.objects.filter(is_active=True).order_by('sort_order', 'label')
+    return [
+        {
+            'value': d.value,
+            'label': d.label,
+            'color': d.color,
+            'triggers_follow_up': d.triggers_follow_up,
+            'updates_lead_status': d.updates_lead_status or None,
+        }
+        for d in dispositions
+    ]
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def app_config(request):
@@ -1396,7 +1437,7 @@ def app_config(request):
 
         return Response({
             'lead_statuses': [{'value': k, 'label': v} for k, v in Lead.STATUS_CHOICES],
-            'call_dispositions': [{'value': k, 'label': v} for k, v in CallLog.DISPOSITION_CHOICES],
+            'call_dispositions': _get_dispositions_for_config(),
             'follow_up_priorities': [{'value': k, 'label': v} for k, v in [
                 ('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('urgent', 'Urgent')
             ]],

@@ -12,7 +12,7 @@
 from django.contrib.admin import AdminSite
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Client, Domain, Plan, Feature, TenantSubscription
+from .models import Client, Domain, Plan, Feature, TenantSubscription, Disposition
 
 
 # ─── Super Admin Site ────────────────────────────────────────────────────────
@@ -229,9 +229,61 @@ class TenantSubscriptionAdmin(admin.ModelAdmin):
     mark_cancelled.short_description = 'Mark selected as Cancelled'
 
 
+# ─── Disposition Admin ───────────────────────────────────────────────────────
+
+class DispositionAdmin(admin.ModelAdmin):
+    list_display = ['sort_order', 'label', 'value', 'color_badge', 'is_active',
+                    'triggers_follow_up', 'updates_lead_status', 'updated_at']
+    list_display_links = ['label']
+    list_editable = ['sort_order', 'is_active']
+    list_filter = ['is_active', 'color', 'triggers_follow_up']
+    search_fields = ['label', 'value']
+    readonly_fields = ['created_at', 'updated_at']
+
+    fieldsets = (
+        ('Disposition', {
+            'fields': ('label', 'value', 'color', 'is_active', 'sort_order')
+        }),
+        ('Workflow Automation', {
+            'fields': ('triggers_follow_up', 'updates_lead_status'),
+            'description': (
+                'triggers_follow_up: mobile app prompts agent to schedule a follow-up. '
+                'updates_lead_status: automatically changes the lead status when this '
+                'disposition is submitted (e.g. set "converted" for the Interested disposition).'
+            ),
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def get_readonly_fields(self, request, obj=None):
+        # value (slug) cannot be changed after creation — existing call logs store it
+        if obj:
+            return self.readonly_fields + ['value']
+        return self.readonly_fields
+
+    def color_badge(self, obj):
+        css = {
+            'success': '#1D9E75',
+            'warning': '#BA7517',
+            'danger':  '#A32D2D',
+            'info':    '#185FA5',
+            'default': '#888780',
+        }
+        color = css.get(obj.color, '#888780')
+        return format_html(
+            '<span style="background:{};color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;">{}</span>',
+            color, obj.get_color_display()
+        )
+    color_badge.short_description = 'Color'
+
+
 # ─── Register on super_admin_site ONLY — never on admin.site ─────────────────
 
 super_admin_site.register(Feature, FeatureAdmin)
 super_admin_site.register(Plan, PlanAdmin)
 super_admin_site.register(Client, ClientAdmin)
 super_admin_site.register(TenantSubscription, TenantSubscriptionAdmin)
+super_admin_site.register(Disposition, DispositionAdmin)

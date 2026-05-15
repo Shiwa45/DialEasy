@@ -138,22 +138,13 @@ class Lead(models.Model):
 # ─── Call Log (unchanged structure, kept here for reference) ─────────────────
 
 class CallLog(models.Model):
-    DISPOSITION_CHOICES = [
-        ('interested', 'Interested'),
-        ('not_interested', 'Not Interested'),
-        ('callback', 'Callback Later'),
-        ('wrong_number', 'Wrong Number'),
-        ('not_reachable', 'Not Reachable'),
-        ('busy', 'Busy'),
-        ('voicemail', 'Voicemail'),
-        ('follow_up', 'Follow-up Required'),
-    ]
-
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='call_logs')
     agent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='call_logs')
     call_date = models.DateTimeField(default=timezone.now)
     duration = models.DurationField(null=True, blank=True)
-    disposition = models.CharField(max_length=20, choices=DISPOSITION_CHOICES)
+    # Disposition slug — validated against tenants.Disposition at the API layer.
+    # max_length 50 to support custom disposition values.
+    disposition = models.CharField(max_length=50)
     remarks = models.TextField(blank=True, null=True)
     recording = models.FileField(upload_to='call_recordings/', null=True, blank=True)
     recording_size = models.IntegerField(default=0)

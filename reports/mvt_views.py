@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 
 from leads.models import Lead, CallLog
 from agents.models import AgentProfile
+from tenants.models import Disposition
 from tenants.feature_gates import require_feature
 
 @login_required
@@ -134,11 +135,12 @@ def reports_dashboard_view(request):
     leaderboard.sort(key=lambda x: (-x['conversions'], -x['total_calls']))
 
     # ── CALL ANALYTICS ──
+    _disp_labels = {d.value: d.label for d in Disposition.objects.filter(is_active=True)}
     disps = period_calls.values('disposition').annotate(count=Count('id')).order_by('-count')
     total_calls_pd = period_calls_count or 1
     disposition_breakdown = []
     for d in disps:
-        label = dict(CallLog.DISPOSITION_CHOICES).get(d['disposition'], d['disposition'])
+        label = _disp_labels.get(d['disposition'], d['disposition'])
         disposition_breakdown.append({
             'label': label,
             'count': d['count'],

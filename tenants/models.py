@@ -265,3 +265,55 @@ class TenantSubscription(models.Model):
         if self.current_period_end:
             return timezone.now() > self.current_period_end
         return False
+
+
+# ─── Disposition ──────────────────────────────────────────────────────────────
+
+class Disposition(models.Model):
+    """
+    A call outcome that agents can choose when logging a call.
+    Managed globally by the super admin; all tenants share the same list.
+
+    Workflow fields:
+      triggers_follow_up   — Flutter app is told to prompt agent to schedule one
+      updates_lead_status  — lead status is automatically changed when this
+                             disposition is submitted (leave blank = no change)
+    """
+    COLOR_CHOICES = [
+        ('default', 'Grey (Default)'),
+        ('success', 'Green (Positive)'),
+        ('warning', 'Orange (Neutral)'),
+        ('danger',  'Red (Negative)'),
+        ('info',    'Blue (Info)'),
+    ]
+
+    label = models.CharField(max_length=100, help_text='Human-readable label shown to agents. e.g. "Interested"')
+    value = models.SlugField(
+        max_length=50, unique=True,
+        help_text='Machine-readable key stored in call logs. e.g. "interested". Cannot be changed after creation.'
+    )
+    color = models.CharField(max_length=10, choices=COLOR_CHOICES, default='default')
+    is_active = models.BooleanField(default=True, help_text='Inactive dispositions are hidden from agents.')
+    sort_order = models.IntegerField(default=0, help_text='Lower numbers appear first.')
+
+    # Workflow automation
+    triggers_follow_up = models.BooleanField(
+        default=False,
+        help_text='If checked, the mobile app will prompt the agent to schedule a follow-up after selecting this disposition.'
+    )
+    updates_lead_status = models.CharField(
+        max_length=20, blank=True,
+        help_text='Automatically update the lead status to this value when this disposition is submitted. Leave blank for no change.'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'tenants'
+        ordering = ['sort_order', 'label']
+        verbose_name = 'Disposition'
+        verbose_name_plural = 'Dispositions'
+
+    def __str__(self):
+        return f'{self.label} ({self.value})'

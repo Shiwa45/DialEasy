@@ -256,7 +256,7 @@ class CallLogSerializer(serializers.ModelSerializer):
     agent = UserSerializer(read_only=True)
     lead = serializers.SerializerMethodField()
     lead_id = serializers.IntegerField(write_only=True, required=False)
-    disposition_display = serializers.CharField(source='get_disposition_display', read_only=True)
+    disposition_display = serializers.SerializerMethodField()
     duration_display = serializers.SerializerMethodField()
 
     class Meta:
@@ -267,6 +267,19 @@ class CallLogSerializer(serializers.ModelSerializer):
             'remarks', 'recording', 'created_at'
         ]
         read_only_fields = ['created_at', 'agent']
+
+    def _disposition_map(self):
+        # Cache per serializer instance so list views only hit the DB once.
+        if '_disp_map' not in self.context:
+            from tenants.models import Disposition
+            self.context['_disp_map'] = {
+                d.value: d.label
+                for d in Disposition.objects.filter(is_active=True)
+            }
+        return self.context['_disp_map']
+
+    def get_disposition_display(self, obj):
+        return self._disposition_map().get(obj.disposition, obj.disposition)
 
     def get_lead(self, obj):
         return {'id': obj.lead.id, 'name': obj.lead.name, 'phone': obj.lead.phone}
@@ -290,9 +303,17 @@ class CallLogCreateSerializer(serializers.ModelSerializer):
         fields = ['disposition', 'remarks', 'duration']
 
     def validate_disposition(self, value):
-        valid = [c[0] for c in CallLog.DISPOSITION_CHOICES]
-        if value not in valid:
-            raise serializers.ValidationError(f'Invalid disposition. Choose from: {valid}')
+        from tenants.models import Disposition
+        valid_values = list(
+            Disposition.objects.filter(is_active=True).values_list('value', flat=True)
+        )
+        if not valid_values:
+            # DB not yet seeded — accept any non-empty string
+            return value
+        if value not in valid_values:
+            raise serializers.ValidationError(
+                f'Invalid disposition "{value}". Valid choices: {valid_values}'
+            )
         return value
 
     def create(self, validated_data):
