@@ -38,11 +38,11 @@
           </div>
           <div class="col-md-6">
             <label class="form-label">Password</label>
-            <input type="password" name="password1" class="form-control" required>
+            <input type="password" name="password" id="password" class="form-control" required>
           </div>
           <div class="col-md-6">
             <label class="form-label">Confirm Password</label>
-            <input type="password" name="password2" class="form-control" required>
+            <input type="password" name="confirm_password" id="confirm_password" class="form-control" required>
           </div>
           <div class="col-md-6">
             <label class="form-label">Phone</label>
@@ -70,4 +70,17 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelector('form').addEventListener('submit', function(e) {
+  const pwd = document.getElementById('password').value;
+  const cpwd = document.getElementById('confirm_password').value;
+  if (pwd !== cpwd) {
+    e.preventDefault();
+    alert('Passwords do not match!');
+  }
+});
+</script>
 {% endblock %}
