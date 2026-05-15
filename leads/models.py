@@ -416,11 +416,17 @@ class AssignmentRule(models.Model):
         if self.eligible_agents.exists():
             pool = list(self.eligible_agents.filter(is_active=True))
         else:
+            # AgentProfile is a TENANT_APP so this queryset is scoped to the
+            # current tenant's schema — only agents belonging to this tenant
+            # are returned.
+            from agents.models import AgentProfile
+            tenant_agent_ids = AgentProfile.objects.filter(
+                is_active=True
+            ).values_list('user_id', flat=True)
             pool = list(AuthUser.objects.filter(
-                is_active=True, is_staff=False
-            ).select_related('agent_profile').filter(
-                agent_profile__is_active=True
-            ))
+                id__in=tenant_agent_ids,
+                is_active=True,
+            ).select_related('agent_profile'))
 
         if not pool:
             return None

@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.http import JsonResponse, HttpResponse
 from django.core.paginator import Paginator
 from .models import Lead, CallLog, FollowUp, LeadUpload
+from agents.models import AgentProfile
 import csv
 import io
 import re
@@ -45,9 +46,10 @@ def dashboard(request):
     # Get lead status distribution
     status_distribution = Lead.objects.values('status').annotate(count=Count('id'))
     
-    # Get top performing agents
+    # Get top performing agents — scoped to this tenant only
+    _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
     top_agents = User.objects.filter(
-        is_staff=False,
+        id__in=_tenant_agent_ids,
         call_logs__call_date__date=today
     ).annotate(
         call_count=Count('call_logs')
@@ -107,8 +109,9 @@ def lead_list(request):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
-    # Get all agents for filter dropdown
-    agents = User.objects.filter(is_staff=False, is_active=True)
+    # Get agents for filter dropdown — scoped to this tenant only
+    _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+    agents = User.objects.filter(id__in=_tenant_agent_ids, is_active=True)
     
     context = {
         'page_obj': page_obj,
@@ -668,7 +671,8 @@ def assign_leads(request):
     """Assign leads to agents"""
     
     unassigned_leads = Lead.objects.filter(assigned_agent__isnull=True)
-    agents = User.objects.filter(is_staff=False, is_active=True)
+    _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+    agents = User.objects.filter(id__in=_tenant_agent_ids, is_active=True)
     
     context = {
         'unassigned_leads': unassigned_leads,
@@ -684,7 +688,8 @@ def bulk_assign_leads(request):
     
     if request.method == 'POST':
         if request.POST.get('auto_assign'):
-            agents = list(User.objects.filter(is_staff=False, is_active=True))
+            _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+            agents = list(User.objects.filter(id__in=_tenant_agent_ids, is_active=True))
             if not agents:
                 messages.error(request, 'No active agents available for assignment.')
                 return redirect('leads:assign_leads')

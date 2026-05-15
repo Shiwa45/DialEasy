@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.contrib.auth.decorators import login_required
 
 from leads.models import Lead, CallLog
+from agents.models import AgentProfile
 from tenants.feature_gates import require_feature
 
 @login_required
@@ -37,8 +38,9 @@ def reports_dashboard_view(request):
         start_date = today - timedelta(days=30)
         end_date = today
 
-    # Agents filter
-    agents_qs = User.objects.filter(is_staff=False, is_active=True).order_by('first_name', 'username')
+    # Agents filter — scoped to this tenant only
+    _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+    agents_qs = User.objects.filter(id__in=_tenant_agent_ids, is_active=True).order_by('first_name', 'username')
     selected_agent = request.GET.get('agent')
     if selected_agent and selected_agent.isdigit():
         target_agents = agents_qs.filter(id=int(selected_agent))

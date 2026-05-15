@@ -35,10 +35,12 @@ def is_admin(user):
 def agent_list(request):
     """Display all agents with their basic stats"""
     
-    # Get all agents who have a profile in THIS tenant
+    # Scope to this tenant: AgentProfile is in the tenant schema so values_list
+    # returns only IDs belonging to the current tenant.
+    tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
     agents = User.objects.filter(
-        agent_profile__isnull=False,
-        is_active=True
+        id__in=tenant_agent_ids,
+        is_active=True,
     ).prefetch_related(
         'assigned_leads', 'call_logs', 'follow_ups', 'agent_profile'
     ).annotate(
@@ -671,8 +673,9 @@ def agent_activity_list(request):
     except ValueError:
         selected_date = today
 
-    # All agents (non-staff)
-    agents = User.objects.filter(is_staff=False, is_active=True).order_by('first_name', 'username')
+    # Scope to this tenant's agents only
+    tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+    agents = User.objects.filter(id__in=tenant_agent_ids, is_active=True).order_by('first_name', 'username')
 
     # Build per-agent summary for the selected date
     summary_rows = []

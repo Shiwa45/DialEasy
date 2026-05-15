@@ -59,8 +59,10 @@ class LeadNoteCreateSerializer(serializers.ModelSerializer):
 
 class LeadTaskSerializer(serializers.ModelSerializer):
     assigned_to = UserSerializer(read_only=True)
+    # queryset is intentionally broad here; get_fields() narrows it per-request
+    # so only agents belonging to the current tenant are valid choices.
     assigned_to_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), source='assigned_to', write_only=True, required=False, allow_null=True
+        queryset=User.objects.none(), source='assigned_to', write_only=True, required=False, allow_null=True
     )
     created_by = UserSerializer(read_only=True)
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
@@ -76,6 +78,15 @@ class LeadTaskSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_by', 'completed_at', 'created_at', 'updated_at']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        from agents.models import AgentProfile
+        tenant_ids = AgentProfile.objects.values_list('user_id', flat=True)
+        fields['assigned_to_id'].queryset = User.objects.filter(
+            id__in=tenant_ids, is_active=True
+        )
+        return fields
 
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user

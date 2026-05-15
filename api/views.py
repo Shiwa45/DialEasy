@@ -1359,7 +1359,12 @@ def bulk_assign_leads_api(request):
         if not agent_id:
             return Response({'error': 'agent_id or auto=true required.'}, status=400)
 
-        agent = get_object_or_404(User, id=agent_id, is_active=True)
+        agent = get_object_or_404(
+            User,
+            pk=agent_id,
+            is_active=True,
+            pk__in=AgentProfile.objects.values_list('user_id', flat=True),
+        )
         count = leads.update(assigned_agent=agent)
         return Response({'assigned': count, 'agent': agent.get_full_name() or agent.username})
 

@@ -8,6 +8,7 @@
 import csv
 from datetime import timedelta
 from django.contrib.auth.models import User
+from agents.models import AgentProfile
 from django.db.models import Count, Q, Sum, Avg, F, ExpressionWrapper, DurationField
 from django.http import HttpResponse
 from django.utils import timezone
@@ -170,7 +171,8 @@ def agent_leaderboard(request):
 
     start, end = _date_range(request)
 
-    agents = User.objects.filter(is_active=True, is_staff=False).annotate(
+    _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+    agents = User.objects.filter(id__in=_tenant_agent_ids, is_active=True).annotate(
         period_calls=Count(
             'call_logs',
             filter=Q(call_logs__call_date__date__range=[start, end])
