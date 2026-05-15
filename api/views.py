@@ -1464,3 +1464,85 @@ def app_config(request):
         })
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ACTIVITY TRACKING — Session + Event endpoints called by Flutter app
+# ─────────────────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def start_dialer_session(request):
+    """
+    POST /api/activity/session/start/
+    Creates a new DialerSession and returns its ID.
+    Also bumps last_heartbeat so the agent shows as online.
+    """
+    session = DialerSession.objects.create(agent=request.user)
+    AgentProfile.objects.filter(user=request.user).update(last_heartbeat=timezone.now())
+    return Response({'session_id': session.pk}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def log_activity_event(request, session_id):
+    """
+    POST /api/activity/session/{session_id}/event/
+    Records a CallActivityEvent and bumps last_heartbeat.
+    Body: { event_type, lead_id?, call_log_id?, metadata? }
+    """
+    session = get_object_or_404(DialerSession, pk=session_id, agent=request.user)
+    event_type = request.data.get('event_type', '')
+
+    valid_types = {c[0] for c in CallActivityEvent.EVENT_CHOICES}
+    if event_type not in valid_types:
+        return Response({'error': f'Invalid event_type: {event_type}'}, status=status.HTTP_400_BAD_REQUEST)
+
+    event = CallActivityEvent.objects.create(
+        agent=request.user,
+        session=session,
+        event_type=event_type,
+        lead_id=request.data.get('lead_id'),
+        call_log_id=request.data.get('call_log_id'),
+        metadata=request.data.get('metadata') or {},
+    )
+
+    if event_type == 'session_end':
+        session.finalize()
+        AgentProfile.objects.filter(user=request.user).update(last_heartbeat=None)
+    else:
+        AgentProfile.objects.filter(user=request.user).update(last_heartbeat=timezone.now())
+
+    return Response({'event_id': event.pk}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def agent_heartbeat(request):
+    """
+    POST /api/heartbeat/
+    Keep-alive that marks the agent as online (called every ~60s by Flutter).
+    """
+    AgentProfile.objects.filter(user=request.user).update(last_heartbeat=timezone.now())
+    return Response({'status': 'ok'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_live_status(request):
+    """
+    GET /api/admin/live-status/
+    Per-agent online status for the Live Monitor AJAX poll. Staff only.
+    """
+    if not request.user.is_staff:
+        return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+
+    profiles = AgentProfile.objects.filter(is_active=True).select_related('user')
+    data = [{
+        'user_id':       p.user_id,
+        'name':          p.user.get_full_name() or p.user.username,
+        'is_online':     p.is_online,
+        'last_heartbeat': p.last_heartbeat.isoformat() if p.last_heartbeat else None,
+    } for p in profiles]
+
+    return Response({'agents': data, 'online_count': sum(1 for d in data if d['is_online'])})

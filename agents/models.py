@@ -15,7 +15,8 @@ class AgentProfile(models.Model):
     target_calls_per_day = models.IntegerField(default=50)
     target_conversions_per_month = models.IntegerField(default=10)
     call_recording_enabled = models.BooleanField(default=False)  # Admin toggle for call recording
-    
+    last_heartbeat = models.DateTimeField(null=True, blank=True)
+
     # Role-based access control (tenant-specific)
     ROLE_CHOICES = [
         ('agent', 'Agent'),
@@ -37,7 +38,14 @@ class AgentProfile(models.Model):
     
     def __str__(self):
         return f"{self.user.get_full_name() or self.user.username} - Agent Profile"
-    
+
+    @property
+    def is_online(self):
+        """True if a heartbeat was received within the last 3 minutes."""
+        if not self.last_heartbeat:
+            return False
+        return (timezone.now() - self.last_heartbeat).total_seconds() < 180
+
     @property
     def conversion_rate(self):
         if self.total_leads_assigned > 0:

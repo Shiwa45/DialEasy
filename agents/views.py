@@ -677,6 +677,12 @@ def agent_activity_list(request):
     tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
     agents = User.objects.filter(id__in=tenant_agent_ids, is_active=True).order_by('first_name', 'username')
 
+    # Pre-fetch online status from AgentProfile (keyed by user_id)
+    online_map = {
+        p.user_id: p.is_online
+        for p in AgentProfile.objects.filter(user_id__in=tenant_agent_ids)
+    }
+
     # Build per-agent summary for the selected date
     summary_rows = []
     for agent in agents:
@@ -689,7 +695,6 @@ def agent_activity_list(request):
         total_disp_secs      = sum(s.total_disposition_time_seconds for s in sessions)
         total_idle_secs      = max(0, total_session_secs - total_call_secs - total_disp_secs)
         total_calls          = sum(s.total_calls_made          for s in sessions)
-        active_session       = sessions.filter(session_end__isnull=True).first()
 
         summary_rows.append({
             'agent':               agent,
@@ -700,17 +705,19 @@ def agent_activity_list(request):
             'total_idle':          _fmt(total_idle_secs),
             'total_calls_made':    total_calls,
             'efficiency_pct':      round(total_call_secs / total_session_secs * 100, 1) if total_session_secs else 0,
-            'is_active':           active_session is not None,
+            'is_online':           online_map.get(agent.pk, False),
         })
 
-    active_agents_count = sum(1 for row in summary_rows if row['is_active'])
+    active_agents_count  = sum(1 for row in summary_rows if row['is_online'])
+    total_calls_today    = sum(row['total_calls_made'] for row in summary_rows)
 
     context = {
-        'summary_rows':  summary_rows,
-        'selected_date': selected_date,
-        'agents':        agents,
-        'selected_agent_id': agent_id,
+        'summary_rows':       summary_rows,
+        'selected_date':      selected_date,
+        'agents':             agents,
+        'selected_agent_id':  agent_id,
         'active_agents_count': active_agents_count,
+        'total_calls_today':  total_calls_today,
     }
     return render(request, 'agents/agent_activity_list.html', context)
 

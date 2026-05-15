@@ -80,4 +80,12 @@ urlpatterns = [
     path('utils/app-config/',                views.app_config,                  name='app_config'),
     path('sync/upload/',                     views.sync_offline_data,           name='sync_upload'),
     path('sync/download/',                   views.sync_download_data,          name='sync_download'),
+
+    # Activity tracking (Flutter dialer)
+    path('activity/session/start/',                  views.start_dialer_session, name='start_dialer_session'),
+    path('activity/session/<int:session_id>/event/', views.log_activity_event,   name='log_activity_event'),
+    path('heartbeat/',                               views.agent_heartbeat,      name='agent_heartbeat'),
+
+    # Admin live status (AJAX poll for Live Monitor page)
+    path('admin/live-status/',                       views.admin_live_status,    name='admin_live_status'),
 ]

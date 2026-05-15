@@ -25,56 +25,64 @@ from .models import LeadNote
 def dashboard(request):
     """Dashboard view with key metrics and recent activities"""
     
-    # Get key metrics
-    total_leads = Lead.objects.count()
-    new_leads = Lead.objects.filter(status='new').count()
-    contacted_leads = Lead.objects.filter(status='contacted').count()
-    converted_leads = Lead.objects.filter(status='converted').count()
-    
-    # Get today's statistics
     today = timezone.now().date()
+
+    # Key metrics
+    total_leads     = Lead.objects.count()
+    converted_leads = Lead.objects.filter(status='converted').count()
+    conversion_rate = round(converted_leads / total_leads * 100, 1) if total_leads else 0
+
     today_calls = CallLog.objects.filter(call_date__date=today).count()
-    today_follow_ups = FollowUp.objects.filter(
-        follow_up_date=today,
-        is_completed=False
-    ).count()
-    
-    # Get recent activities
+    today_follow_ups = FollowUp.objects.filter(follow_up_date=today, is_completed=False).count()
+
     recent_leads = Lead.objects.select_related('assigned_agent').order_by('-created_at')[:10]
-    recent_calls = CallLog.objects.select_related('lead', 'agent').order_by('-call_date')[:10]
-    
-    # Get lead status distribution
+
+    # Pre-compute display fields for recent calls
+    raw_calls = CallLog.objects.select_related('lead', 'agent').order_by('-call_date')[:10]
+    recent_calls = []
+    for c in raw_calls:
+        secs = int(c.duration.total_seconds()) if c.duration else 0
+        if secs:
+            m, s = divmod(secs, 60)
+            dur_display = f"{m}m {s}s" if m else f"{s}s"
+        else:
+            dur_display = '—'
+        recent_calls.append({
+            'lead':        c.lead,
+            'agent':       c.agent,
+            'disposition': c.disposition.replace('_', ' ').title() if c.disposition else '—',
+            'duration':    dur_display,
+            'call_date':   c.call_date,
+        })
+
     status_distribution = Lead.objects.values('status').annotate(count=Count('id'))
-    
-    # Get top performing agents — scoped to this tenant only
+
     _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
     top_agents = User.objects.filter(
         id__in=_tenant_agent_ids,
-        call_logs__call_date__date=today
+        call_logs__call_date__date=today,
     ).annotate(
-        call_count=Count('call_logs')
+        call_count=Count('call_logs', filter=Q(call_logs__call_date__date=today))
     ).order_by('-call_count')[:5]
-    
-    # Get overdue follow-ups
+
     overdue_follow_ups = FollowUp.objects.filter(
-        follow_up_date__lt=today,
-        is_completed=False
+        follow_up_date__lt=today, is_completed=False
     ).count()
-    
+
     context = {
-        'total_leads': total_leads,
-        'new_leads': new_leads,
-        'contacted_leads': contacted_leads,
-        'converted_leads': converted_leads,
-        'today_calls': today_calls,
-        'today_follow_ups': today_follow_ups,
-        'recent_leads': recent_leads,
-        'recent_calls': recent_calls,
+        'today':             today,
+        'total_leads':       total_leads,
+        'converted_leads':   converted_leads,
+        'conversion_rate':   conversion_rate,
+        'today_calls':       today_calls,
+        'today_follow_ups':  today_follow_ups,
+        'recent_leads':      recent_leads,
+        'recent_calls':      recent_calls,
         'status_distribution': status_distribution,
-        'top_agents': top_agents,
+        'top_agents':        top_agents,
         'overdue_follow_ups': overdue_follow_ups,
     }
-    
+
     return render(request, 'leads/dashboard.html', context)
 
 

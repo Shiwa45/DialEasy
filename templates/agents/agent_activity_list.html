@@ -1,13 +1,21 @@
 {% extends "base/base.html" %}
 
 {% block title %}Live Monitor — DialEasy CRM{% endblock %}
-{% block page_title %}Live Monitor & Time Tracking{% endblock %}
-{% block page_sub %}Real-time agent activity · Auto-refreshes every 30s{% endblock %}
+{% block page_title %}Live Monitor{% endblock %}
+{% block page_sub %}Real-time agent activity · Online status updates every 30s{% endblock %}
 
 {% block topbar_action %}
 <button class="btn-crm-outline" onclick="location.reload()">
   <i class="bi bi-arrow-clockwise"></i> Refresh
 </button>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .pulse-dot { animation: pulse 1.8s ease-in-out infinite; }
+  .row-online { background: var(--brand-orange-light); }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -26,7 +34,8 @@
       <a href="?" class="btn-crm-outline" style="font-size:12px;">Today</a>
     </div>
     <div class="ms-auto col-auto" style="font-size:13px;color:#64748B;align-self:flex-end;">
-      <i class="bi bi-arrow-clockwise"></i> Auto-refreshing in <span id="countdown">30</span>s
+      <span class="status-dot dot-green pulse-dot"></span>
+      Live · refreshes in <span id="countdown">30</span>s
     </div>
   </div>
 </form>
@@ -35,16 +44,15 @@
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <div class="stat-card stat-green">
-      <div class="stat-label">Active Now</div>
-      <div class="stat-value">{{ active_agents_count }}</div>
-      <div class="stat-delta"><span class="status-dot dot-green"></span> Live sessions</div>
+      <div class="stat-label">Online Now</div>
+      <div class="stat-value" id="stat-online">{{ active_agents_count }}</div>
+      <div class="stat-delta"><span class="status-dot dot-green pulse-dot"></span> Heartbeat active</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="stat-card stat-orange">
-      <div class="stat-label">Total Calls Made</div>
-      <div class="stat-value">{% for row in summary_rows %}{% if forloop.first %}0{% endif %}{% endfor %}
-        {{ summary_rows|length }}</div>
+      <div class="stat-label">Total Calls Today</div>
+      <div class="stat-value">{{ total_calls_today }}</div>
       <div class="stat-delta">{{ selected_date|date:"d M Y" }}</div>
     </div>
   </div>
@@ -52,11 +60,12 @@
     <div class="stat-card stat-blue">
       <div class="stat-label">Total Agents</div>
       <div class="stat-value">{{ summary_rows|length }}</div>
+      <div class="stat-delta text-muted">In this tenant</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="stat-card stat-purple">
-      <div class="stat-label">Viewing Date</div>
+      <div class="stat-label">Viewing</div>
       <div class="stat-value" style="font-size:16px;">{{ selected_date|date:"d M" }}</div>
     </div>
   </div>
@@ -69,7 +78,7 @@
   </div>
 
   <div class="table-responsive">
-    <table class="crm-table">
+    <table class="crm-table" id="activity-table">
       <thead>
         <tr>
           <th>Agent</th>
@@ -86,7 +95,7 @@
       </thead>
       <tbody>
         {% for row in summary_rows %}
-        <tr style="{% if row.is_active %}background:var(--brand-orange-light);{% endif %}">
+        <tr class="{% if row.is_online %}row-online{% endif %}" data-uid="{{ row.agent.id }}">
           <td>
             <div class="d-flex align-items-center gap-2">
               <div class="agent-av" style="width:32px;height:32px;font-size:11px;background:{% cycle '#F97316' '#3B82F6' '#8B5CF6' '#16A34A' '#DC2626' '#0D9488' %};">
@@ -98,13 +107,13 @@
               </div>
             </div>
           </td>
-          <td>
-            {% if row.is_active %}
-              <span class="badge-status badge-active"><span class="status-dot dot-green"></span>Live</span>
+          <td class="status-cell">
+            {% if row.is_online %}
+              <span class="badge-status badge-active"><span class="status-dot dot-green pulse-dot"></span>Online</span>
             {% elif row.session_count > 0 %}
               <span class="badge-status badge-inactive">Done</span>
             {% else %}
-              <span class="badge-status badge-offline">No Session</span>
+              <span class="badge-status" style="background:#F1F5F9;color:#94A3B8;">Offline</span>
             {% endif %}
           </td>
           <td style="font-weight:700;">{{ row.session_count }}</td>
@@ -128,7 +137,8 @@
             </div>
           </td>
           <td>
-            <a href="{% url 'agents:agent_activity_detail' row.agent.id %}" class="icon-btn" title="View sessions" style="width:28px;height:28px;font-size:14px;color:#3B82F6;border-color:#BFDBFE;">
+            <a href="{% url 'agents:agent_activity_detail' row.agent.id %}" class="icon-btn" title="View sessions"
+               style="width:28px;height:28px;font-size:14px;color:#3B82F6;border-color:#BFDBFE;">
               <i class="bi bi-box-arrow-up-right"></i>
             </a>
           </td>
@@ -147,14 +157,63 @@
 </div>
 {% endblock %}
 
+
 {% block extra_js %}
 <script>
+// ── Countdown + AJAX live-status poll ─────────────────────────────────────────
 let secs = 30;
 const el = document.getElementById('countdown');
+
+async function pollLiveStatus() {
+  try {
+    const res = await fetch('/api/admin/live-status/', {
+      headers: { 'X-CSRFToken': getCookie('csrftoken') }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // Update "Online Now" stat card
+    const statEl = document.getElementById('stat-online');
+    if (statEl) statEl.textContent = data.online_count;
+
+    // Update each row's status cell
+    const map = {};
+    data.agents.forEach(a => { map[a.user_id] = a.is_online; });
+
+    document.querySelectorAll('#activity-table tbody tr[data-uid]').forEach(row => {
+      const uid  = parseInt(row.dataset.uid);
+      const online = !!map[uid];
+      const cell = row.querySelector('.status-cell');
+      if (!cell) return;
+
+      row.classList.toggle('row-online', online);
+      if (online) {
+        cell.innerHTML = '<span class="badge-status badge-active"><span class="status-dot dot-green pulse-dot"></span>Online</span>';
+      } else {
+        // keep "Done" or "Offline" — only change if was previously Online
+        if (cell.querySelector('.dot-green')) {
+          cell.innerHTML = '<span class="badge-status badge-inactive">Done</span>';
+        }
+      }
+    });
+  } catch (e) { /* silent fail */ }
+}
+
 setInterval(() => {
   secs--;
   if (el) el.textContent = secs;
-  if (secs <= 0) location.reload();
+  if (secs <= 0) {
+    secs = 30;
+    pollLiveStatus();
+  }
 }, 1000);
+
+// Initial poll after 5s so the page loads first
+setTimeout(pollLiveStatus, 5000);
+
+function getCookie(name) {
+  const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return v ? v.pop() : '';
+}
 </script>
 {% endblock %}
