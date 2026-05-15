@@ -1,0 +1,60 @@
+{% comment %}Shared form fields for add/edit disposition modals{% endcomment %}
+<div class="mb-3">
+  <label class="form-label">Label <span style="color:#DC2626;">*</span></label>
+  <input type="text" name="label" class="form-control" placeholder="e.g. Interested" required maxlength="100">
+</div>
+
+{% if not edit_mode %}
+<div class="mb-3">
+  <label class="form-label">Value (slug) <span style="color:#DC2626;">*</span></label>
+  <input type="text" name="value" class="form-control" placeholder="e.g. interested" required maxlength="50"
+         pattern="[a-z0-9_]+" title="Lowercase letters, numbers and underscores only">
+  <div style="font-size:11px; color:#94A3B8; margin-top:4px;">
+    Unique identifier. Use lowercase_underscore. Cannot be changed after creation.
+  </div>
+</div>
+{% endif %}
+
+<div class="mb-3">
+  <label class="form-label">Color</label>
+  <select name="color" class="form-select">
+    {% for val, lbl in color_choices %}
+    <option value="{{ val }}">{{ lbl }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<div class="mb-3">
+  <label class="form-label">Updates Lead Status to</label>
+  <select name="updates_lead_status" class="form-select">
+    <option value="">— No change —</option>
+    {% for status in lead_statuses %}
+    <option value="{{ status }}">{{ status }}</option>
+    {% endfor %}
+  </select>
+  <div style="font-size:11px; color:#94A3B8; margin-top:4px;">
+    When an agent submits this disposition, the lead's status is automatically updated.
+  </div>
+</div>
+
+<div class="mb-3">
+  <label class="form-label">Sort Order</label>
+  <input type="number" name="sort_order" class="form-control" value="0" min="0" max="999">
+</div>
+
+<div class="d-flex gap-4">
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" name="triggers_follow_up" id="followup-check-{{ edit_mode|yesno:'edit,add' }}">
+    <label class="form-check-label" for="followup-check-{{ edit_mode|yesno:'edit,add' }}" style="font-size:13px; color:#475569;">
+      Prompt agent to schedule a follow-up
+    </label>
+  </div>
+  {% if edit_mode %}
+  <div class="form-check">
+    <input class="form-check-input" type="checkbox" name="is_active" id="active-check-edit">
+    <label class="form-check-label" for="active-check-edit" style="font-size:13px; color:#475569;">
+      Active
+    </label>
+  </div>
+  {% endif %}
+</div>

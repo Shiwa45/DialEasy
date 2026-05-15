@@ -840,5 +840,73 @@ def send_whatsapp_message(request, lead_id):
         messages.success(request, 'WhatsApp message sent successfully.')
     except Exception as e:
         messages.error(request, f'Failed to send WhatsApp message: {str(e)}')
-        
+
+
+@login_required
+def settings_dispositions(request):
+    """Manage call dispositions. Staff-only; dispositions are shared across all tenants."""
+    if not request.user.is_staff:
+        messages.error(request, 'Access denied.')
+        return redirect('leads:dashboard')
+
+    from tenants.models import Disposition
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        if action == 'create':
+            label = request.POST.get('label', '').strip()
+            value = request.POST.get('value', '').strip()
+            color = request.POST.get('color', 'default')
+            triggers_follow_up = request.POST.get('triggers_follow_up') == 'on'
+            updates_lead_status = request.POST.get('updates_lead_status', '').strip()
+            sort_order = int(request.POST.get('sort_order', 0) or 0)
+            if label and value:
+                if Disposition.objects.filter(value=value).exists():
+                    messages.error(request, f'A disposition with value "{value}" already exists.')
+                else:
+                    Disposition.objects.create(
+                        label=label,
+                        value=value,
+                        color=color,
+                        triggers_follow_up=triggers_follow_up,
+                        updates_lead_status=updates_lead_status,
+                        sort_order=sort_order,
+                        is_active=True,
+                    )
+                    messages.success(request, f'Disposition "{label}" created.')
+            else:
+                messages.error(request, 'Label and value are required.')
+
+        elif action == 'edit':
+            disp_id = request.POST.get('disp_id')
+            d = get_object_or_404(Disposition, pk=disp_id)
+            d.label = request.POST.get('label', d.label).strip()
+            d.color = request.POST.get('color', d.color)
+            d.triggers_follow_up = request.POST.get('triggers_follow_up') == 'on'
+            d.updates_lead_status = request.POST.get('updates_lead_status', '').strip()
+            d.sort_order = int(request.POST.get('sort_order', d.sort_order) or d.sort_order)
+            d.is_active = request.POST.get('is_active') == 'on'
+            d.save()
+            messages.success(request, f'Disposition "{d.label}" updated.')
+
+        elif action == 'delete':
+            disp_id = request.POST.get('disp_id')
+            d = get_object_or_404(Disposition, pk=disp_id)
+            label = d.label
+            d.delete()
+            messages.success(request, f'Disposition "{label}" deleted.')
+
+        return redirect('leads:settings_dispositions')
+
+    dispositions = Disposition.objects.all().order_by('sort_order', 'label')
+    lead_statuses = [s[0] for s in Lead.STATUS_CHOICES]
+    color_choices = Disposition.COLOR_CHOICES
+
+    return render(request, 'leads/settings_dispositions.html', {
+        'dispositions': dispositions,
+        'lead_statuses': lead_statuses,
+        'color_choices': color_choices,
+    })
+
     return redirect(request.META.get('HTTP_REFERER', 'leads:dashboard'))

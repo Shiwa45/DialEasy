@@ -26,4 +26,7 @@ urlpatterns = [
     
     # Integrations
     path('integrations/', views.integrations_view, name='integrations'),
+
+    # Settings
+    path('settings/dispositions/', views.settings_dispositions, name='settings_dispositions'),
 ]

@@ -541,6 +541,12 @@
 
     <div class="nav-section-label">Settings</div>
 
+    {% if request.user.is_staff %}
+    <a href="{% url 'leads:settings_dispositions' %}" class="nav-link-item {% if request.resolver_match.url_name == 'settings_dispositions' %}active{% endif %}">
+      <i class="bi bi-sliders"></i> Dispositions
+    </a>
+    {% endif %}
+
     {% if tenant_features.whatsapp_api %}
     <a href="{% url 'leads:integrations' %}" class="nav-link-item {% if request.resolver_match.url_name == 'integrations' %}active{% endif %}">
       <i class="bi bi-whatsapp"></i> WhatsApp
