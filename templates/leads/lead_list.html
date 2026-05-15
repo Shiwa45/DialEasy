@@ -1,0 +1,292 @@
+{% extends "base/base.html" %}
+
+{% block title %}Leads — DialEasy CRM{% endblock %}
+{% block page_title %}Leads Management{% endblock %}
+{% block page_sub %}Manage, search and filter all your leads{% endblock %}
+
+{% block topbar_action %}
+<a href="{% url 'leads:upload_leads' %}" class="btn-crm-primary">
+  <i class="bi bi-upload"></i> Import CSV
+</a>
+{% endblock %}
+
+{% block content %}
+<!-- ── Filters & Search ── -->
+<div class="crm-card mb-3">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-12 col-md-4">
+      <label class="form-label">Search</label>
+      <div class="topbar-search" style="width:100%;max-width:100%;">
+        <i class="bi bi-search" style="font-size:13px;"></i>
+        <input type="text" name="search" placeholder="Name, phone, email, company…"
+               value="{{ search_query|default:'' }}" style="background:transparent;border:none;outline:none;font-size:13px;width:100%;font-family:inherit;">
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">Status</label>
+      <select name="status" class="form-select form-select-sm">
+        <option value="">All Statuses</option>
+        {% for val, label in status_choices %}
+        <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">Agent</label>
+      <select name="agent" class="form-select form-select-sm">
+        <option value="">All Agents</option>
+        {% for agent in agents %}
+        <option value="{{ agent.id }}" {% if agent_filter == agent.id|stringformat:"s" %}selected{% endif %}>
+          {{ agent.get_full_name|default:agent.username }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-4 d-flex gap-2">
+      <button type="submit" class="btn-crm-primary flex-grow-1"><i class="bi bi-funnel"></i> Filter</button>
+      <a href="{% url 'leads:lead_list' %}" class="btn-crm-outline"><i class="bi bi-x-lg"></i> Clear</a>
+      <a href="{% url 'leads:assign_leads' %}" class="btn-crm-outline"><i class="bi bi-shuffle"></i> Assign</a>
+    </div>
+  </form>
+</div>
+
+<!-- ── Quick Filter Pills ── -->
+<div class="d-flex gap-2 flex-wrap mb-3">
+  <a href="{% url 'leads:lead_list' %}" class="filter-chip {% if not status_filter %}active{% endif %}">
+    <i class="bi bi-grid"></i> All
+  </a>
+  {% for val, label in status_choices %}
+  <a href="{% url 'leads:lead_list' %}?status={{ val }}" class="filter-chip {% if status_filter == val %}active{% endif %}">
+    {{ label }}
+  </a>
+  {% endfor %}
+  <a href="{% url 'leads:lead_list' %}?agent=0" class="filter-chip">
+    <i class="bi bi-person-dash"></i> Unassigned
+  </a>
+</div>
+
+<!-- ── Leads Table ── -->
+<div class="crm-card">
+  <form method="post" action="{% url 'leads:bulk_assign_leads' %}" id="bulk-form">
+    {% csrf_token %}
+
+    <!-- Bulk Action Bar -->
+    <div class="d-flex align-items-center justify-content-between mb-3 gap-2 flex-wrap">
+      <div class="d-flex align-items-center gap-2">
+        <span style="font-size:13px;font-weight:600;color:#64748B;">
+          {{ page_obj.paginator.count }} lead{{ page_obj.paginator.count|pluralize }} found
+        </span>
+        <span id="selected-count" style="font-size:12px;color:var(--brand-orange);display:none;"></span>
+      </div>
+      <div class="d-flex gap-2 align-items-center" id="bulk-actions" style="display:none!important;">
+        <select name="agent_id" class="form-select form-select-sm" style="width:160px;">
+          <option value="">Assign to agent…</option>
+          {% for agent in agents %}
+          <option value="{{ agent.id }}">{{ agent.get_full_name|default:agent.username }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-crm-primary" style="font-size:12px;">
+          <i class="bi bi-person-check"></i> Assign Selected
+        </button>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="#" class="btn-crm-outline" style="font-size:12px;">
+          <i class="bi bi-download"></i> Export CSV
+        </a>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="crm-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="check-all" style="cursor:pointer;"></th>
+            <th>Lead</th>
+            <th>Phone</th>
+            <th>Source</th>
+            <th>Agent</th>
+            <th>Status</th>
+            <th>Score</th>
+            <th>Created</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lead in page_obj %}
+          <tr>
+            <td>
+              <input type="checkbox" name="lead_ids" value="{{ lead.id }}" class="row-check" style="cursor:pointer;">
+            </td>
+            <td>
+              <a href="{% url 'leads:lead_detail' lead.id %}" style="font-weight:600;color:#0F172A;text-decoration:none;">
+                {{ lead.name }}
+              </a>
+              {% if lead.email %}
+              <br><span style="font-size:11px;color:#94A3B8;">{{ lead.email }}</span>
+              {% endif %}
+            </td>
+            <td style="font-size:12.5px;">{{ lead.phone }}</td>
+            <td style="font-size:12px;color:#64748B;">{{ lead.source|default:"—" }}</td>
+            <td>
+              {% if lead.assigned_agent %}
+              <div class="d-flex align-items-center gap-2">
+                <div class="agent-av" style="width:24px;height:24px;font-size:9px;background:#F97316;">
+                  {{ lead.assigned_agent.first_name|first|default:lead.assigned_agent.username|first|upper }}
+                </div>
+                <span style="font-size:12px;">{{ lead.assigned_agent.get_full_name|default:lead.assigned_agent.username }}</span>
+              </div>
+              {% else %}
+              <span style="font-size:11.5px;color:#94A3B8;font-style:italic;">Unassigned</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge-status badge-{{ lead.status }}">{{ lead.get_status_display }}</span>
+            </td>
+            <td>
+              <span style="font-weight:700;font-size:13px;
+                {% if lead.lead_score >= 70 %}color:var(--brand-green);
+                {% elif lead.lead_score >= 40 %}color:var(--brand-orange);
+                {% else %}color:#94A3B8;{% endif %}">
+                {{ lead.lead_score }}
+              </span>
+            </td>
+            <td style="font-size:11.5px;color:#64748B;">{{ lead.created_at|date:"d M Y" }}</td>
+            <td>
+              <div class="d-flex gap-2">
+                <a href="{% url 'leads:lead_detail' lead.id %}" class="icon-btn" title="View" style="width:28px;height:28px;font-size:14px;">
+                  <i class="bi bi-eye"></i>
+                </a>
+                {% if tenant_features.whatsapp_api and lead.phone %}
+                <button type="button" class="icon-btn" title="Send WhatsApp" 
+                        style="width:28px;height:28px;font-size:14px;color:var(--brand-green);border-color:#bbf7d0;background:none;padding:0;display:flex;align-items:center;justify-content:center;"
+                        onclick="openWhatsappModal('{{ lead.id }}', '{{ lead.name|escapejs }}', '{{ lead.phone|escapejs }}')">
+                  <i class="bi bi-whatsapp"></i>
+                </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="9" class="text-center py-5">
+              <i class="bi bi-inbox" style="font-size:36px;color:#CBD5E1;display:block;margin-bottom:8px;"></i>
+              <span style="color:#94A3B8;font-size:14px;">No leads found. Try adjusting your filters.</span>
+              <br>
+              <a href="{% url 'leads:upload_leads' %}" class="btn-crm-primary mt-3 d-inline-flex">
+                <i class="bi bi-upload"></i> Import Leads
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+
+  <!-- Pagination -->
+  {% if page_obj.has_other_pages %}
+  <div class="d-flex justify-content-between align-items-center mt-4">
+    <span style="font-size:13px;color:#64748B;">
+      Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }}
+    </span>
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+            <i class="bi bi-chevron-left"></i>
+          </a>
+        </li>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+          {% if page_obj.number == num %}
+          <li class="page-item active"><span class="page-link" style="background:var(--brand-orange);border-color:var(--brand-orange);">{{ num }}</span></li>
+          {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">{{ num }}</a>
+          </li>
+          {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}">
+            <i class="bi bi-chevron-right"></i>
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Send WhatsApp Modal -->
+<div class="modal fade" id="listWhatsappModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-whatsapp text-success me-2"></i>Send WhatsApp — <span id="waModalLeadName"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="waModalForm">
+        {% csrf_token %}
+        <div class="modal-body p-4">
+          <div class="mb-3">
+            <label class="form-label">To: <span style="font-weight:600;" id="waModalPhone"></span></label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Message *</label>
+            <textarea name="message" class="form-control" rows="4" placeholder="Type your WhatsApp message here…" required></textarea>
+            <div class="form-text mt-2" style="font-size:12px;">Ensure your WhatsApp API is correctly configured in Integrations. Outbound messages beyond 24h might require template messages instead.</div>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-success"><i class="bi bi-send"></i> Send</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const checkAll  = document.getElementById('check-all');
+const rowChecks = document.querySelectorAll('.row-check');
+const bulkBar   = document.getElementById('bulk-actions');
+const countEl   = document.getElementById('selected-count');
+
+function updateBulkBar() {
+  const checked = document.querySelectorAll('.row-check:checked').length;
+  if (checked > 0) {
+    bulkBar.style.display = 'flex';
+    countEl.style.display = 'inline';
+    countEl.textContent   = checked + ' selected';
+  } else {
+    bulkBar.style.display = 'none';
+    countEl.style.display = 'none';
+  }
+}
+
+checkAll.addEventListener('change', () => {
+  rowChecks.forEach(cb => cb.checked = checkAll.checked);
+  updateBulkBar();
+});
+
+rowChecks.forEach(cb => cb.addEventListener('change', updateBulkBar));
+
+function openWhatsappModal(leadId, leadName, leadPhone) {
+  document.getElementById('waModalLeadName').textContent = leadName;
+  document.getElementById('waModalPhone').textContent = leadPhone;
+  
+  // Get base url from lead detail URL and construct the new path
+  let baseUrl = "{% url 'leads:dashboard' %}";
+  document.getElementById('waModalForm').action = baseUrl + "lead/" + leadId + "/send-whatsapp/";
+  
+  let modal = new bootstrap.Modal(document.getElementById('listWhatsappModal'));
+  modal.show();
+}
+</script>
+{% endblock %}

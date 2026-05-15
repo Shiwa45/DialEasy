@@ -1,0 +1,100 @@
+{% extends "base/base.html" %}
+
+{% block title %}My Dashboard — DialEasy CRM{% endblock %}
+{% block page_title %}My Dashboard{% endblock %}
+{% block page_sub %}Welcome back, {{ request.user.get_full_name|default:request.user.username }}{% endblock %}
+
+{% block topbar_action %}
+<a href="{% url 'agents:agent_leads' %}" class="btn-crm-primary">
+  <i class="bi bi-people"></i> My Leads
+</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Stats ── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-orange">
+      <div class="stat-label">My Leads</div>
+      <div class="stat-value">{{ total_leads|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-green">
+      <div class="stat-label">Converted</div>
+      <div class="stat-value">{{ converted_leads|default:0 }}</div>
+      <div class="stat-delta text-success">{{ conversion_rate|default:0 }}% rate</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-blue">
+      <div class="stat-label">Today's Calls</div>
+      <div class="stat-value">{{ today_calls|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-purple">
+      <div class="stat-label">Follow-ups Due</div>
+      <div class="stat-value">{{ today_follow_ups|default:0 }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- ── Upcoming Follow-ups ── -->
+  <div class="col-md-6">
+    <div class="crm-card h-100">
+      <div class="crm-card-title"><i class="bi bi-calendar-check"></i> Upcoming Follow-ups</div>
+      {% for fu in upcoming_follow_ups %}
+      <div style="display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(226,232,240,0.5);">
+        <div style="width:36px;height:36px;border-radius:10px;background:var(--brand-orange-light);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="bi bi-calendar-event" style="color:var(--brand-orange);font-size:15px;"></i>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;">
+            <a href="{% url 'leads:lead_detail' fu.lead.id %}" style="color:#0F172A;text-decoration:none;">{{ fu.lead.name }}</a>
+          </div>
+          <div style="font-size:11px;color:#64748B;">{{ fu.title|default:"Follow-up" }} · {{ fu.follow_up_date|date:"d M Y" }}</div>
+        </div>
+        <span class="badge-status badge-callback">{{ fu.follow_up_date|timeuntil }}</span>
+      </div>
+      {% empty %}
+      <div class="text-center py-4">
+        <i class="bi bi-calendar-check" style="font-size:28px;color:var(--brand-green);display:block;margin-bottom:6px;"></i>
+        <span style="color:#64748B;font-size:13px;">No follow-ups due. You're all caught up!</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ── Recent Calls ── -->
+  <div class="col-md-6">
+    <div class="crm-card h-100">
+      <div class="crm-card-title"><i class="bi bi-telephone-inbound"></i> My Recent Calls</div>
+      {% for call in recent_calls %}
+      <div style="display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(226,232,240,0.5);">
+        <div style="width:36px;height:36px;border-radius:10px;background:#F0FDF4;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="bi bi-telephone" style="color:var(--brand-green);font-size:15px;"></i>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;">
+            <a href="{% url 'leads:lead_detail' call.lead.id %}" style="color:#0F172A;text-decoration:none;">{{ call.lead.name }}</a>
+          </div>
+          <div style="font-size:11px;color:#64748B;">{{ call.get_disposition_display }} · {{ call.call_date|timesince }} ago</div>
+        </div>
+        {% if call.recording %}
+        <a href="{{ call.recording.url }}" class="icon-btn" title="Play" style="width:28px;height:28px;font-size:14px;color:var(--brand-green);">
+          <i class="bi bi-play-circle"></i>
+        </a>
+        {% endif %}
+      </div>
+      {% empty %}
+      <div class="text-center py-4">
+        <span style="color:#94A3B8;font-size:13px;">No calls logged today.</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

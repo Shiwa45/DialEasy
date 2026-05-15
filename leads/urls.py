@@ -10,6 +10,7 @@ urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('list/', views.lead_list, name='lead_list'),
     path('lead/<int:lead_id>/', views.lead_detail, name='lead_detail'),
+    path('lead/<int:lead_id>/send-whatsapp/', views.send_whatsapp_message, name='send_whatsapp_message'),
     
     # Lead upload functionality
     path('upload/', views.upload_leads, name='upload_leads'),

@@ -1,0 +1,154 @@
+{% extends "base/base.html" %}
+
+{% block title %}Assign Leads — DialEasy CRM{% endblock %}
+{% block page_title %}Lead Assignment{% endblock %}
+{% block page_sub %}Distribute unassigned leads to available agents{% endblock %}
+
+{% block topbar_action %}
+<form method="post" action="{% url 'leads:bulk_assign_leads' %}" id="auto-form" style="display:inline;">
+  {% csrf_token %}
+  <input type="hidden" name="auto_assign" value="1">
+  <button type="submit" class="btn-crm-primary">
+    <i class="bi bi-lightning-charge"></i> Auto Assign All
+  </button>
+</form>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Summary Banner ── -->
+<div style="background:linear-gradient(135deg,#FFF7ED,#F0FDF4);border:1px solid var(--brand-orange-mid);border-radius:14px;padding:18px 22px;display:flex;align-items:center;gap:18px;margin-bottom:22px;flex-wrap:wrap;">
+  <div style="width:48px;height:48px;background:var(--brand-orange);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;flex-shrink:0;">
+    <i class="bi bi-shuffle"></i>
+  </div>
+  <div style="flex:1;">
+    <div style="font-size:15px;font-weight:800;margin-bottom:3px;">
+      {{ unassigned_leads.count }} Unassigned Lead{{ unassigned_leads.count|pluralize }}
+    </div>
+    <div style="font-size:13px;color:#64748B;">
+      {{ agents.count }} active agent{{ agents.count|pluralize }} available · Round-robin distribution
+    </div>
+  </div>
+  <form method="post" action="{% url 'leads:bulk_assign_leads' %}" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    {% csrf_token %}
+    <select name="agent_id" class="form-select" style="width:180px;font-size:13px;">
+      <option value="">Pick an agent…</option>
+      {% for agent in agents %}
+      <option value="{{ agent.id }}">{{ agent.get_full_name|default:agent.username }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn-crm-outline">
+      <i class="bi bi-person-check"></i> Assign Selected
+    </button>
+  </form>
+</div>
+
+<div class="row g-3">
+
+  <!-- ── Unassigned Leads Table ── -->
+  <div class="col-md-7">
+    <div class="crm-card">
+      <div class="crm-card-title d-flex justify-content-between">
+        <span><i class="bi bi-person-slash"></i> Unassigned Leads</span>
+        <span style="font-size:12px;color:#64748B;font-weight:400;">{{ unassigned_leads.count }} total</span>
+      </div>
+
+      <form method="post" action="{% url 'leads:bulk_assign_leads' %}" id="assign-form">
+        {% csrf_token %}
+        <div class="table-responsive">
+          <table class="crm-table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="check-all-assign"></th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Source</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lead in unassigned_leads %}
+              <tr>
+                <td><input type="checkbox" name="lead_ids" value="{{ lead.id }}" class="assign-check"></td>
+                <td>
+                  <a href="{% url 'leads:lead_detail' lead.id %}" style="font-weight:600;color:#0F172A;text-decoration:none;">{{ lead.name }}</a>
+                </td>
+                <td style="font-size:12px;">{{ lead.phone }}</td>
+                <td style="font-size:12px;color:#64748B;">{{ lead.source|default:"—" }}</td>
+                <td style="font-size:11px;color:#64748B;">{{ lead.created_at|date:"d M" }}</td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="5" class="text-center py-5">
+                  <i class="bi bi-check2-circle" style="font-size:36px;color:var(--brand-green);display:block;margin-bottom:8px;"></i>
+                  <span style="color:#64748B;font-size:14px;">All leads are assigned!</span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Sticky footer for bulk assign -->
+        <div id="bulk-assign-bar" style="display:none;margin-top:12px;display:flex;gap:10px;align-items:center;">
+          <select name="agent_id" class="form-select form-select-sm" style="width:180px;" required>
+            <option value="">Choose agent…</option>
+            {% for agent in agents %}
+            <option value="{{ agent.id }}">{{ agent.get_full_name|default:agent.username }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn-crm-primary" style="font-size:12px;">
+            <i class="bi bi-person-check"></i> Assign Selected
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Agent Distribution ── -->
+  <div class="col-md-5">
+    <div class="crm-card">
+      <div class="crm-card-title"><i class="bi bi-bar-chart-steps"></i> Current Distribution</div>
+      {% for agent in agents %}
+      {% with total=agent.assigned_leads_count|default:0 %}
+      <div class="d-flex align-items-center gap-3 mb-3">
+        <div class="agent-av" style="background:{% cycle '#F97316' '#3B82F6' '#8B5CF6' '#16A34A' '#0D9488' '#DC2626' %};">
+          {{ agent.first_name|first|default:agent.username|first|upper }}{{ agent.last_name|first|upper }}
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;">{{ agent.get_full_name|default:agent.username }}</div>
+          <div style="font-size:11px;color:#64748B;">{{ agent.total_leads|default:0 }} leads assigned</div>
+          <div class="crm-progress mt-1">
+            <div class="crm-progress-fill crm-progress-orange"
+              style="width:{% widthratio agent.total_leads|default:0 100 100 %}%;max-width:100%;">
+            </div>
+          </div>
+        </div>
+        <div style="text-align:right;font-size:12px;font-weight:700;color:var(--brand-orange);">
+          {{ agent.total_leads|default:0 }}
+        </div>
+      </div>
+      {% endwith %}
+      {% empty %}
+      <p class="text-muted" style="font-size:13px;">No agents found.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('check-all-assign')?.addEventListener('change', function() {
+  document.querySelectorAll('.assign-check').forEach(cb => cb.checked = this.checked);
+  toggleBar();
+});
+document.querySelectorAll('.assign-check').forEach(cb => cb.addEventListener('change', toggleBar));
+
+function toggleBar() {
+  const checked = document.querySelectorAll('.assign-check:checked').length;
+  const bar = document.getElementById('bulk-assign-bar');
+  if (bar) bar.style.display = checked > 0 ? 'flex' : 'none';
+}
+</script>
+{% endblock %}

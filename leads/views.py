@@ -15,6 +15,10 @@ import csv
 import io
 import re
 from datetime import datetime, timedelta
+from django.views.decorators.http import require_POST
+from leads.integration_models import IntegrationConfig
+from leads.whatsapp_service import send_whatsapp_text
+from .models import LeadNote
 
 @login_required
 def dashboard(request):
@@ -764,3 +768,50 @@ def integrations_view(request):
         'recent_logs': recent_logs,
     }
     return render(request, 'leads/integrations.html', context)
+
+
+@login_required
+@require_POST
+def send_whatsapp_message(request, lead_id):
+    """
+    Send a WhatsApp message via the configured WhatsApp Cloud API.
+    """
+    lead = get_object_or_404(Lead, id=lead_id)
+    message_body = request.POST.get('message', '').strip()
+    
+    if not message_body:
+        messages.error(request, 'Message body cannot be empty.')
+        return redirect(request.META.get('HTTP_REFERER', 'leads:dashboard'))
+        
+    if not lead.phone:
+        messages.error(request, 'Lead does not have a phone number.')
+        return redirect(request.META.get('HTTP_REFERER', 'leads:dashboard'))
+
+    # Get WhatsApp Config
+    config = IntegrationConfig.objects.filter(platform='whatsapp', is_active=True).first()
+    if not config or not config.whatsapp_phone_number_id or not config.whatsapp_access_token:
+        messages.error(request, 'WhatsApp integration is not configured or inactive.')
+        return redirect(request.META.get('HTTP_REFERER', 'leads:dashboard'))
+        
+    try:
+        # Send message
+        resp = send_whatsapp_text(
+            phone_number_id=config.whatsapp_phone_number_id,
+            access_token=config.whatsapp_access_token,
+            to=lead.phone,
+            body=message_body
+        )
+        
+        # Log as a LeadNote
+        LeadNote.objects.create(
+            lead=lead,
+            author=request.user,
+            note_type='whatsapp',
+            content=f"Sent WhatsApp Message:\n{message_body}"
+        )
+        
+        messages.success(request, 'WhatsApp message sent successfully.')
+    except Exception as e:
+        messages.error(request, f'Failed to send WhatsApp message: {str(e)}')
+        
+    return redirect(request.META.get('HTTP_REFERER', 'leads:dashboard'))

@@ -1,0 +1,283 @@
+{% extends "base/base.html" %}
+
+{% block title %}Tenant Management — Super Admin{% endblock %}
+{% block page_title %}Tenant Management{% endblock %}
+{% block page_sub %}Super Admin · Manage all companies on the platform{% endblock %}
+
+{% block topbar_action %}
+<button class="btn-crm-primary" data-bs-toggle="modal" data-bs-target="#addTenantModal">
+  <i class="bi bi-building-add"></i> Add Tenant
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Platform Stats -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-orange">
+      <div class="stat-label">Total Tenants</div>
+      <div class="stat-value">{{ total_tenants|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-green">
+      <div class="stat-label">Active Subscriptions</div>
+      <div class="stat-value">{{ active_subscriptions|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-blue">
+      <div class="stat-label">Trial Tenants</div>
+      <div class="stat-value">{{ trial_count|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-purple">
+      <div class="stat-label">MRR (Estimated)</div>
+      <div class="stat-value" style="font-size:18px;">₹{{ mrr|default:0|floatformat:0 }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Search + Filter Bar -->
+<div class="crm-card mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">Search Tenants</label>
+      <input type="text" name="q" class="form-control" placeholder="Name, domain, email…" value="{{ request.GET.q|default:'' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Plan</label>
+      <select name="plan" class="form-select">
+        <option value="">All Plans</option>
+        {% for plan in plans %}
+        <option value="{{ plan.id }}" {% if request.GET.plan == plan.id|stringformat:"s" %}selected{% endif %}>{{ plan.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Status</label>
+      <select name="status" class="form-select">
+        <option value="">All</option>
+        <option value="active">Active</option>
+        <option value="trial">Trial</option>
+        <option value="expired">Expired</option>
+        <option value="inactive">Inactive</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn-crm-primary w-100"><i class="bi bi-funnel"></i> Filter</button>
+    </div>
+    <div class="col-auto">
+      <a href="?" class="btn-crm-outline"><i class="bi bi-x"></i> Clear</a>
+    </div>
+  </form>
+</div>
+
+<!-- Tenant Table -->
+<div class="crm-card">
+  <div class="crm-card-title"><i class="bi bi-building-skyscraper"></i> All Tenants</div>
+  <div class="table-responsive">
+    <table class="crm-table">
+      <thead>
+        <tr>
+          <th>Tenant</th>
+          <th>Domain</th>
+          <th>Plan</th>
+          <th>Status</th>
+          <th>Agents</th>
+          <th>Leads</th>
+          <th>Joined</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tenant in tenants %}
+        <tr>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              {% if tenant.logo %}
+              <img src="{{ tenant.logo.url }}" style="width:32px;height:32px;border-radius:8px;object-fit:cover;" alt="">
+              {% else %}
+              <div style="width:32px;height:32px;border-radius:8px;background:{% cycle 'var(--brand-orange)' '#3B82F6' '#8B5CF6' '#16A34A' '#0D9488' '#DC2626' %};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;flex-shrink:0;">
+                {{ tenant.name|first|upper }}
+              </div>
+              {% endif %}
+              <div>
+                <div style="font-size:13px;font-weight:700;">{{ tenant.name }}</div>
+                <div style="font-size:11px;color:#94A3B8;">{{ tenant.owner_email }}</div>
+              </div>
+            </div>
+          </td>
+          <td>
+            {% for domain in tenant.domains.all %}
+            <a href="https://{{ domain.domain }}" target="_blank" style="font-size:12px;color:var(--brand-orange);">
+              {{ domain.domain }}
+            </a>{% if not forloop.last %}<br>{% endif %}
+            {% endfor %}
+          </td>
+          <td>
+            {% with sub=tenant.active_subscription %}
+            {% if sub %}
+            <span style="font-weight:600;font-size:13px;">{{ sub.plan.name }}</span>
+            <br><span style="font-size:10px;color:#94A3B8;">{{ sub.get_billing_cycle_display }}</span>
+            {% else %}
+            <span style="color:#94A3B8;font-size:12px;font-style:italic;">No Plan</span>
+            {% endif %}
+            {% endwith %}
+          </td>
+          <td>
+            {% with sub=tenant.active_subscription %}
+            {% if sub %}
+            <span class="badge-status
+              {% if sub.status == 'active' %}badge-active
+              {% elif sub.status == 'trialing' %}badge-trial
+              {% elif sub.status == 'past_due' %}badge-contacted
+              {% else %}badge-lost{% endif %}">
+              {{ sub.get_status_display }}
+            </span>
+            {% else %}
+            <span class="badge-status badge-inactive">Inactive</span>
+            {% endif %}
+            {% endwith %}
+          </td>
+          <td>
+            {% with sub=tenant.active_subscription %}
+            {% if sub and sub.plan.max_agents != -1 %}
+            <span style="font-weight:700;">—</span> / {{ sub.plan.max_agents }}
+            {% else %}
+            <span style="font-weight:700;">—</span>
+            {% endif %}
+            {% endwith %}
+          </td>
+          <td>
+            {% with sub=tenant.active_subscription %}
+            {% if sub and sub.plan.max_leads != -1 %}
+            — / {{ sub.plan.max_leads }}
+            {% else %}—{% endif %}
+            {% endwith %}
+          </td>
+          <td style="font-size:12px;color:#64748B;">{{ tenant.created_on|date:"d M Y"|default:"—" }}</td>
+          <td>
+            <div class="d-flex gap-1">
+              <a href="https://{{ tenant.domains.first.domain }}" target="_blank"
+                class="icon-btn" style="width:28px;height:28px;font-size:13px;" title="Open Tenant">
+                <i class="bi bi-box-arrow-up-right"></i>
+              </a>
+              <a href="{% url 'super_admin:tenants_client_change' tenant.id %}"
+                class="icon-btn" style="width:28px;height:28px;font-size:13px;color:var(--brand-orange);border-color:var(--brand-orange-mid);" title="Edit">
+                <i class="bi bi-pencil"></i>
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="8" class="text-center py-5">
+            <i class="bi bi-building" style="font-size:36px;color:#CBD5E1;display:block;margin-bottom:10px;"></i>
+            <span style="color:#94A3B8;font-size:14px;">No tenants yet.</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add Tenant Modal -->
+<div class="modal fade" id="addTenantModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 24px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-building-add text-orange me-2"></i>Add New Tenant</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="#" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create_tenant">
+        <div class="modal-body p-4">
+          <div class="row g-3">
+            <!-- Company Info -->
+            <div class="col-12">
+              <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#94A3B8;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border-color);">
+                Company Information
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Company Name *</label>
+              <input type="text" name="name" class="form-control" placeholder="e.g. Acme Solar Pvt Ltd" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Schema Name (subdomain) *</label>
+              <div class="input-group">
+                <input type="text" name="schema_name" class="form-control" placeholder="acme" pattern="[a-z0-9_]+" required>
+                <span class="input-group-text" style="font-size:12px;background:#F8FAFC;">.dialeasy.com</span>
+              </div>
+              <div class="form-text" style="font-size:11px;">Lowercase letters, numbers, underscores only. Cannot be changed later.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Owner Email *</label>
+              <input type="email" name="owner_email" class="form-control" placeholder="admin@company.com" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Phone</label>
+              <input type="tel" name="phone" class="form-control" placeholder="+91 98765 43210">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Address</label>
+              <input type="text" name="address" class="form-control" placeholder="Company address">
+            </div>
+
+            <!-- Subscription -->
+            <div class="col-12 mt-2">
+              <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#94A3B8;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border-color);">
+                Subscription
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Plan *</label>
+              <select name="plan" class="form-select" required>
+                <option value="">Select plan…</option>
+                {% for plan in plans %}
+                <option value="{{ plan.id }}">{{ plan.name }} — ₹{{ plan.price_monthly }}/mo</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Billing Cycle</label>
+              <select name="billing_cycle" class="form-select">
+                <option value="monthly">Monthly</option>
+                <option value="annual">Annual</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Status</label>
+              <select name="sub_status" class="form-select">
+                <option value="trialing">Trialing</option>
+                <option value="active">Active</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Trial Ends (optional)</label>
+              <input type="datetime-local" name="trial_ends_at" class="form-control">
+            </div>
+          </div>
+
+          <!-- Info box -->
+          <div style="background:#F0FDF4;border:1px solid var(--brand-green-mid);border-radius:10px;padding:12px 16px;margin-top:16px;font-size:12px;color:#15803D;">
+            <i class="bi bi-info-circle-fill me-2"></i>
+            A new PostgreSQL schema will be provisioned automatically. A temporary admin account will be created and credentials will be shown after creation.
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 24px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-primary">
+            <i class="bi bi-building-add"></i> Create Tenant
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

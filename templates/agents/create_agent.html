@@ -1,0 +1,73 @@
+{% extends "base/base.html" %}
+
+{% block title %}Create Agent — DialEasy CRM{% endblock %}
+{% block page_title %}Create Agent{% endblock %}
+{% block page_sub %}Add a new telecaller to your team{% endblock %}
+
+{% block topbar_action %}
+<a href="{% url 'agents:agent_list' %}" class="btn-crm-outline">
+  <i class="bi bi-arrow-left"></i> Back to Agents
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="crm-card">
+      <div class="crm-card-title"><i class="bi bi-person-plus"></i> New Agent Details</div>
+
+      <form method="post">
+        {% csrf_token %}
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">First Name</label>
+            <input type="text" name="first_name" class="form-control" placeholder="e.g. Priya" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Last Name</label>
+            <input type="text" name="last_name" class="form-control" placeholder="e.g. Sharma">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Username</label>
+            <input type="text" name="username" class="form-control" placeholder="e.g. priya.sharma" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Email</label>
+            <input type="email" name="email" class="form-control" placeholder="priya@company.com">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Password</label>
+            <input type="password" name="password1" class="form-control" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Confirm Password</label>
+            <input type="password" name="password2" class="form-control" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Phone</label>
+            <input type="tel" name="phone" class="form-control" placeholder="+91 98765 43210">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Role</label>
+            <select name="role" class="form-select">
+              <option value="agent">Agent</option>
+              <option value="manager">Manager</option>
+              <option value="admin">Tenant Admin</option>
+            </select>
+          </div>
+        </div>
+
+        <hr class="divider">
+
+        <div class="d-flex gap-3 justify-content-end">
+          <a href="{% url 'agents:agent_list' %}" class="btn-crm-outline">Cancel</a>
+          <button type="submit" class="btn-crm-primary">
+            <i class="bi bi-check-lg"></i> Create Agent
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

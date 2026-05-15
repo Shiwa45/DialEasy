@@ -700,11 +700,14 @@ def agent_activity_list(request):
             'is_active':           active_session is not None,
         })
 
+    active_agents_count = sum(1 for row in summary_rows if row['is_active'])
+
     context = {
         'summary_rows':  summary_rows,
         'selected_date': selected_date,
         'agents':        agents,
         'selected_agent_id': agent_id,
+        'active_agents_count': active_agents_count,
     }
     return render(request, 'agents/agent_activity_list.html', context)
 

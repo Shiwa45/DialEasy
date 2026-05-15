@@ -1,0 +1,67 @@
+{% extends "base/base.html" %}
+
+{% block title %}Integrations — DialEasy CRM{% endblock %}
+{% block page_title %}Lead Integrations{% endblock %}
+{% block page_sub %}Webhook URLs for automatic lead capture from external platforms{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  {% for source_name, webhook_url in webhook_urls.items %}
+  <div class="col-md-6">
+    <div class="crm-card">
+      <div class="crm-card-title">
+        <i class="bi bi-plug"></i> {{ source_name }}
+      </div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:12px;">
+        Post leads from {{ source_name }} directly into your CRM using this webhook URL.
+      </div>
+      <div style="background:#F8FAFC;border-radius:9px;padding:10px 14px;border:1px solid var(--border-color);display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <code style="flex:1;font-size:11.5px;color:#475569;word-break:break-all;">{{ webhook_url }}</code>
+        <button onclick="copyUrl(this, '{{ webhook_url }}')" class="icon-btn" title="Copy" style="width:28px;height:28px;flex-shrink:0;">
+          <i class="bi bi-clipboard"></i>
+        </button>
+      </div>
+      <div style="font-size:11px;color:#94A3B8;">
+        <i class="bi bi-info-circle"></i>
+        POST JSON with <code>name</code>, <code>phone</code>, <code>email</code> fields.
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="col-12">
+    <div class="crm-card text-center py-5">
+      <i class="bi bi-plug" style="font-size:36px;color:#CBD5E1;display:block;margin-bottom:10px;"></i>
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">No integrations configured</div>
+      <p style="color:#64748B;font-size:13px;">Contact your admin to enable integration webhooks.</p>
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- Generic webhook info -->
+  <div class="col-12">
+    <div class="crm-card" style="border-left:3px solid var(--brand-orange);">
+      <div class="crm-card-title"><i class="bi bi-code-slash"></i> Webhook Payload Format</div>
+      <pre style="background:#1A1F2E;color:#E2E8F0;padding:16px;border-radius:10px;font-size:12px;overflow-x:auto;"><code>{
+  "name":    "Rajesh Kumar",
+  "phone":   "9876543210",
+  "email":   "rajesh@example.com",
+  "company": "Acme Corp",
+  "source":  "IndiaMart",
+  "notes":   "Interested in solar panels"
+}</code></pre>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function copyUrl(btn, url) {
+  navigator.clipboard.writeText(url).then(() => {
+    btn.innerHTML = '<i class="bi bi-check-lg" style="color:var(--brand-green);"></i>';
+    setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 2000);
+  });
+}
+</script>
+{% endblock %}

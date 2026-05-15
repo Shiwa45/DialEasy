@@ -1,0 +1,184 @@
+{% extends "base/base.html" %}
+
+{% block title %}Session Detail — {{ agent.get_full_name|default:agent.username }}{% endblock %}
+{% block page_title %}Session Detail — {{ agent.get_full_name|default:agent.username }}{% endblock %}
+{% block page_sub %}{{ start_date|date:"d M Y" }} – {{ end_date|date:"d M Y" }} · Time tracking breakdown{% endblock %}
+
+{% block topbar_action %}
+<a href="{% url 'agents:agent_activity_list' %}" class="btn-crm-outline">
+  <i class="bi bi-arrow-left"></i> All Agents
+</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Date Range Picker -->
+<form method="get" class="crm-card mb-4">
+  <div class="row g-3 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label">From</label>
+      <input type="date" name="start" class="form-control" value="{{ start_date|date:'Y-m-d' }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">To</label>
+      <input type="date" name="end" class="form-control" value="{{ end_date|date:'Y-m-d' }}">
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn-crm-primary w-100"><i class="bi bi-funnel"></i> Apply</button>
+    </div>
+    <div class="col-md-4 d-flex gap-2">
+      <a href="?start={{ today_minus_7 }}&end={{ today }}" class="btn-crm-outline" style="font-size:12px;">Last 7 days</a>
+      <a href="?start={{ month_start }}&end={{ today }}" class="btn-crm-outline" style="font-size:12px;">This Month</a>
+    </div>
+  </div>
+</form>
+
+<!-- Time Chart -->
+<div class="crm-card mb-4">
+  <div class="crm-card-title"><i class="bi bi-clock-history"></i> Daily Time Breakdown</div>
+  <canvas id="timeChart" height="200"></canvas>
+</div>
+
+<!-- Session Cards -->
+<div class="crm-card-title mb-3" style="font-size:15px;font-weight:700;">
+  <i class="bi bi-list-ul text-orange"></i> Sessions ({{ sessions|length }} total)
+</div>
+
+{% for session in sessions %}
+<div class="crm-card mb-3">
+  <!-- Session Header -->
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-3">
+      <div style="width:40px;height:40px;border-radius:12px;background:{% if not session.session_end %}#F0FDF4{% else %}#F8FAFC{% endif %};display:flex;align-items:center;justify-content:center;">
+        <i class="bi bi-{% if not session.session_end %}broadcast{% else %}stop-circle{% endif %}" style="font-size:18px;color:{% if not session.session_end %}var(--brand-green){% else %}#94A3B8{% endif %};"></i>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:700;">
+          {{ session.session_start|date:"d M Y · g:i A" }}
+          {% if not session.session_end %}
+          <span class="badge-status badge-active ms-1">● Live</span>
+          {% endif %}
+        </div>
+        <div style="font-size:12px;color:#64748B;">
+          {% if session.session_end %}Ended {{ session.session_end|date:"g:i A" }}{% else %}Ongoing{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Time Boxes -->
+    <div class="d-flex gap-2 flex-wrap">
+      <div style="text-align:center;background:#FFF7ED;border-radius:10px;padding:8px 14px;min-width:80px;">
+        <div style="font-size:14px;font-weight:800;color:var(--brand-orange);font-variant-numeric:tabular-nums;">{{ session.talk_time_display }}</div>
+        <div style="font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Talk Time</div>
+      </div>
+      <div style="text-align:center;background:#FFFBEB;border-radius:10px;padding:8px 14px;min-width:80px;">
+        <div style="font-size:14px;font-weight:800;color:#D97706;font-variant-numeric:tabular-nums;">{{ session.disposition_time_display }}</div>
+        <div style="font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Wrap-up</div>
+      </div>
+      <div style="text-align:center;background:#FEF2F2;border-radius:10px;padding:8px 14px;min-width:80px;">
+        <div style="font-size:14px;font-weight:800;color:#EF4444;font-variant-numeric:tabular-nums;">{{ session.idle_time_display }}</div>
+        <div style="font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Idle</div>
+      </div>
+      <div style="text-align:center;background:#F8FAFC;border-radius:10px;padding:8px 14px;min-width:80px;">
+        <div style="font-size:14px;font-weight:800;color:#0F172A;font-variant-numeric:tabular-nums;">{{ session.session_duration_display }}</div>
+        <div style="font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Total</div>
+      </div>
+      <div style="text-align:center;background:#F0FDF4;border-radius:10px;padding:8px 14px;min-width:80px;">
+        <div style="font-size:14px;font-weight:800;color:var(--brand-green);">{{ session.total_calls_made }}</div>
+        <div style="font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;letter-spacing:0.3px;">Calls</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Efficiency Bar -->
+  {% if session.session_duration_seconds > 0 %}
+  <div class="mb-3">
+    <div class="d-flex justify-content-between mb-1" style="font-size:11px;color:#64748B;">
+      <span>Call efficiency</span>
+      <span style="font-weight:700;color:var(--brand-orange);">
+        {{ session.total_call_time_seconds|default:0 }}s / {{ session.session_duration_seconds }}s
+      </span>
+    </div>
+    <div class="crm-progress">
+      <div class="crm-progress-fill crm-progress-green"
+        style="width:{% widthratio session.total_call_time_seconds session.session_duration_seconds 100 %}%;max-width:100%;"></div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Event Timeline -->
+  {% if session.events.all %}
+  <div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#94A3B8;margin-bottom:10px;">Event Timeline</div>
+    <div style="position:relative;padding-left:20px;border-left:2px solid var(--border-color);">
+      {% for event in session.events.all %}
+      <div style="position:relative;margin-bottom:10px;padding-left:16px;">
+        <!-- Timeline dot -->
+        <div style="position:absolute;left:-27px;top:4px;width:10px;height:10px;border-radius:50%;
+          {% if event.event_type == 'call_started' %}background:var(--brand-orange);
+          {% elif event.event_type == 'call_ended' %}background:var(--brand-green);
+          {% elif event.event_type == 'session_start' %}background:#3B82F6;
+          {% elif event.event_type == 'session_end' %}background:#94A3B8;
+          {% else %}background:#D97706;{% endif %}
+          border:2px solid white;box-shadow:0 0 0 1px rgba(0,0,0,0.1);"></div>
+
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <div style="font-size:11px;font-weight:700;color:#94A3B8;font-variant-numeric:tabular-nums;width:64px;flex-shrink:0;">
+            {{ event.timestamp|date:"H:i:s" }}
+          </div>
+          <div style="flex:1;">
+            <span style="font-size:12px;font-weight:600;">{{ event.get_event_type_display }}</span>
+            {% if event.lead %}
+            — <a href="{% url 'leads:lead_detail' event.lead.id %}" style="font-size:12px;color:var(--brand-orange);text-decoration:none;font-weight:500;">{{ event.lead.name }}</a>
+            {% endif %}
+          </div>
+          {% if event.metadata and event.metadata.duration %}
+          <div style="font-size:11px;color:#64748B;">{{ event.metadata.duration }}s</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% empty %}
+<div class="crm-card text-center py-5">
+  <i class="bi bi-calendar-x" style="font-size:36px;color:#CBD5E1;display:block;margin-bottom:10px;"></i>
+  <div style="font-size:15px;font-weight:700;color:#94A3B8;">No sessions in this date range</div>
+</div>
+{% endfor %}
+
+<script>
+const dailyData = {{ daily_data|safe }};
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const labels  = dailyData.map(d => d.date);
+const callS   = dailyData.map(d => Math.round(d.call_secs / 60));
+const dispS   = dailyData.map(d => Math.round(d.disp_secs / 60));
+const sessS   = dailyData.map(d => Math.round(d.session_secs / 60));
+
+new Chart(document.getElementById('timeChart'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [
+      { label: 'Talk Time (min)',  data: callS, backgroundColor: 'rgba(249,115,22,0.75)', borderRadius: 4 },
+      { label: 'Wrap-up (min)',    data: dispS, backgroundColor: 'rgba(217,119,6,0.5)',   borderRadius: 4 },
+      { label: 'Session Total (min)', data: sessS, type: 'line', borderColor: '#94A3B8', backgroundColor: 'transparent', borderDash: [4,3], tension: 0.3, pointRadius: 3 },
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'top', labels: { font: { size: 12 }, boxWidth: 12 } } },
+    scales: {
+      x: { stacked: true, grid: { display: false } },
+      y: { stacked: false, beginAtZero: true, title: { display: true, text: 'Minutes' } }
+    }
+  }
+});
+</script>
+{% endblock %}

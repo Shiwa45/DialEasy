@@ -1,0 +1,183 @@
+{% extends "base/base.html" %}
+
+{% block title %}Performance — {{ agent.get_full_name|default:agent.username }}{% endblock %}
+{% block page_title %}Performance Report{% endblock %}
+{% block page_sub %}{{ agent.get_full_name|default:agent.username }} · {{ start_date|date:"d M" }} – {{ end_date|date:"d M Y" }}{% endblock %}
+
+{% block topbar_action %}
+<form method="get" class="d-flex gap-2 align-items-center">
+  <input type="date" name="start_date" value="{{ start_date|date:'Y-m-d' }}" class="form-control form-control-sm" style="width:140px;">
+  <input type="date" name="end_date" value="{{ end_date|date:'Y-m-d' }}" class="form-control form-control-sm" style="width:140px;">
+  <button type="submit" class="btn-crm-primary" style="font-size:12px;padding:6px 12px;">
+    <i class="bi bi-funnel"></i> Apply
+  </button>
+</form>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Summary Stats ── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-orange">
+      <div class="stat-label">Total Calls</div>
+      <div class="stat-value">{{ total_calls|default:0 }}</div>
+      <div class="stat-delta text-muted">{{ avg_calls_per_day|default:0 }}/day avg</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-green">
+      <div class="stat-label">Conversions</div>
+      <div class="stat-value">{{ total_conversions|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-blue">
+      <div class="stat-label">Leads in Period</div>
+      <div class="stat-value">{{ total_leads|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-purple">
+      <div class="stat-label">Conversion Rate</div>
+      <div class="stat-value">{{ conversion_rate|default:0 }}%</div>
+      {% if current_target %}
+      <div class="stat-delta text-muted">Target: {{ current_target.target_conversions }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <!-- ── Daily Performance Chart ── -->
+  <div class="col-md-8">
+    <div class="crm-card h-100">
+      <div class="crm-card-title"><i class="bi bi-graph-up"></i> Daily Performance</div>
+      <canvas id="dailyChart" height="260"></canvas>
+    </div>
+  </div>
+
+  <!-- ── Disposition Breakdown ── -->
+  <div class="col-md-4">
+    <div class="crm-card h-100">
+      <div class="crm-card-title"><i class="bi bi-pie-chart"></i> Call Outcomes</div>
+      <canvas id="dispositionChart" height="200"></canvas>
+      <div class="mt-3">
+        {% for disp in disposition_breakdown %}
+        <div class="d-flex justify-content-between align-items-center mb-2" style="font-size:12px;">
+          <span style="font-weight:600;">{{ disp.disposition|capfirst }}</span>
+          <span style="font-weight:700;">{{ disp.count }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Source Performance ── -->
+{% if source_performance %}
+<div class="crm-card mb-3">
+  <div class="crm-card-title"><i class="bi bi-funnel"></i> Lead Source Performance</div>
+  <div class="table-responsive">
+    <table class="crm-table">
+      <thead><tr><th>Source</th><th>Total Leads</th><th>Converted</th><th>Conversion Rate</th><th>Progress</th></tr></thead>
+      <tbody>
+        {% for src in source_performance %}
+        <tr>
+          <td style="font-weight:600;">{{ src.source|default:"Unknown" }}</td>
+          <td>{{ src.total }}</td>
+          <td style="color:var(--brand-green);font-weight:700;">{{ src.converted }}</td>
+          <td>
+            <span style="font-weight:800;
+              {% if src.conversion_rate >= 15 %}color:var(--brand-green);
+              {% elif src.conversion_rate >= 8 %}color:var(--brand-orange);
+              {% else %}color:#EF4444;{% endif %}">
+              {{ src.conversion_rate }}%
+            </span>
+          </td>
+          <td style="width:120px;">
+            <div class="crm-progress">
+              <div class="crm-progress-fill crm-progress-orange" style="width:{{ src.conversion_rate }}%;max-width:100%;"></div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Serialize data for JS -->
+<script>
+const dailyData = {{ daily_performance|safe }};
+const dispositionData = {{ disposition_breakdown|safe }};
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Daily Performance Chart ──
+const dailyLabels = dailyData.map(d => d.date_display);
+const callsData   = dailyData.map(d => d.calls);
+const convData    = dailyData.map(d => d.conversions);
+
+new Chart(document.getElementById('dailyChart'), {
+  type: 'bar',
+  data: {
+    labels: dailyLabels,
+    datasets: [
+      {
+        label: 'Calls',
+        data: callsData,
+        backgroundColor: 'rgba(249,115,22,0.2)',
+        borderColor: '#F97316',
+        borderWidth: 2,
+        borderRadius: 4,
+      },
+      {
+        label: 'Conversions',
+        data: convData,
+        backgroundColor: 'rgba(22,163,74,0.2)',
+        borderColor: '#16A34A',
+        borderWidth: 2,
+        borderRadius: 4,
+        type: 'line',
+        tension: 0.4,
+        pointBackgroundColor: '#16A34A',
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'top', labels: { font: { size: 12 }, boxWidth: 12 } } },
+    scales: {
+      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+      x: { grid: { display: false } }
+    }
+  }
+});
+
+// ── Disposition Pie Chart ──
+if (dispositionData.length > 0) {
+  const dispLabels = dispositionData.map(d => d.disposition);
+  const dispValues = dispositionData.map(d => d.count);
+  const colors = ['#F97316','#16A34A','#3B82F6','#8B5CF6','#EF4444','#0D9488','#CA8A04'];
+
+  new Chart(document.getElementById('dispositionChart'), {
+    type: 'doughnut',
+    data: {
+      labels: dispLabels,
+      datasets: [{ data: dispValues, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 10 } }
+      },
+      cutout: '65%'
+    }
+  });
+}
+</script>
+{% endblock %}

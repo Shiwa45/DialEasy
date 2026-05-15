@@ -1,0 +1,340 @@
+{% extends "base/base.html" %}
+
+{% block title %}Reports — DialEasy CRM{% endblock %}
+{% block page_title %}Reports & Analytics{% endblock %}
+{% block page_sub %}Performance insights across your team{% endblock %}
+
+{% block topbar_action %}
+<div class="d-flex gap-2">
+  <a href="/api/reports/export/leads/" class="btn-crm-outline" style="font-size:12px;"><i class="bi bi-download"></i> Export Leads</a>
+  <a href="/api/reports/export/calls/" class="btn-crm-outline" style="font-size:12px;"><i class="bi bi-download"></i> Export Calls</a>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Date Range Filter -->
+<div class="crm-card mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-md-2">
+      <label class="form-label">From</label>
+      <input type="date" name="start_date" class="form-control" value="{{ start_date|date:'Y-m-d'|default:'' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">To</label>
+      <input type="date" name="end_date" class="form-control" value="{{ end_date|date:'Y-m-d'|default:'' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Agent</label>
+      <select name="agent" class="form-select">
+        <option value="">All Agents</option>
+        {% for agent in agents %}
+        <option value="{{ agent.id }}" {% if selected_agent == agent.id|stringformat:"s" %}selected{% endif %}>
+          {{ agent.get_full_name|default:agent.username }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn-crm-primary w-100"><i class="bi bi-funnel"></i> Apply</button>
+    </div>
+    <div class="col-auto d-flex gap-2">
+      <a href="?days=7"  class="btn-crm-outline" style="font-size:12px;">7d</a>
+      <a href="?days=30" class="btn-crm-outline" style="font-size:12px;">30d</a>
+      <a href="?days=90" class="btn-crm-outline" style="font-size:12px;">90d</a>
+    </div>
+  </form>
+</div>
+
+<!-- KPI Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-orange">
+      <div class="stat-label">Total Leads</div>
+      <div class="stat-value">{{ kpi.total_leads|default:0 }}</div>
+      <div class="stat-delta text-success">{{ kpi.period_new|default:0 }} new this period</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-green">
+      <div class="stat-label">Conversions</div>
+      <div class="stat-value">{{ kpi.converted|default:0 }}</div>
+      <div class="stat-delta" style="color:var(--brand-green);">{{ kpi.conversion_rate|default:0 }}% rate</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-blue">
+      <div class="stat-label">Total Calls</div>
+      <div class="stat-value">{{ kpi.period_calls|default:0 }}</div>
+      <div class="stat-delta text-muted">{{ kpi.avg_calls_per_day|default:0 }}/day avg</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-purple">
+      <div class="stat-label">Pipeline Value</div>
+      <div class="stat-value" style="font-size:20px;">₹{{ kpi.pipeline_value|default:0|floatformat:0 }}</div>
+      <div class="stat-delta text-success">₹{{ kpi.won_value|default:0|floatformat:0 }} won</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs for report types -->
+<ul class="nav nav-tabs mb-4" id="reportTabs">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-trend"><i class="bi bi-graph-up"></i> Daily Trend</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-funnel"><i class="bi bi-filter"></i> Lead Funnel</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-leaderboard"><i class="bi bi-trophy"></i> Leaderboard</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-calls"><i class="bi bi-telephone"></i> Call Analytics</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-pipeline"><i class="bi bi-currency-rupee"></i> Pipeline</button></li>
+</ul>
+
+<div class="tab-content">
+
+  <!-- DAILY TREND -->
+  <div class="tab-pane fade show active" id="tab-trend">
+    <div class="crm-card">
+      <div class="crm-card-title"><i class="bi bi-graph-up"></i> Leads & Calls — Daily Trend</div>
+      <canvas id="trendChart" height="280"></canvas>
+    </div>
+  </div>
+
+  <!-- LEAD FUNNEL -->
+  <div class="tab-pane fade" id="tab-funnel">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="crm-card h-100">
+          <div class="crm-card-title"><i class="bi bi-filter"></i> Lead Funnel</div>
+          {% for stage in funnel_stages %}
+          <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1" style="font-size:13px;">
+              <span style="font-weight:600;">{{ stage.label }}</span>
+              <span style="font-weight:800;">{{ stage.count }} <small style="color:#94A3B8;font-weight:400;">({{ stage.pct }}%)</small></span>
+            </div>
+            <div class="crm-progress" style="height:10px;">
+              <div class="crm-progress-fill {{ stage.color_class }}" style="width:{{ stage.pct }}%;"></div>
+            </div>
+          </div>
+          {% empty %}
+          <p class="text-muted" style="font-size:13px;">No funnel data.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="crm-card h-100">
+          <div class="crm-card-title"><i class="bi bi-pie-chart"></i> By Source</div>
+          <canvas id="sourceChart" height="260"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AGENT LEADERBOARD -->
+  <div class="tab-pane fade" id="tab-leaderboard">
+    <div class="crm-card">
+      <div class="crm-card-title"><i class="bi bi-trophy"></i> Agent Leaderboard</div>
+      <div class="table-responsive">
+        <table class="crm-table">
+          <thead>
+            <tr><th>#</th><th>Agent</th><th>Calls</th><th>Leads</th><th>Converted</th><th>Conv. %</th><th>Avg Duration</th><th>Score</th></tr>
+          </thead>
+          <tbody>
+            {% for entry in leaderboard %}
+            <tr {% if forloop.first %}style="background:var(--brand-orange-light);"{% endif %}>
+              <td style="font-size:16px;">
+                {% if forloop.counter == 1 %}🥇{% elif forloop.counter == 2 %}🥈{% elif forloop.counter == 3 %}🥉{% else %}{{ forloop.counter }}{% endif %}
+              </td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="agent-av" style="width:28px;height:28px;font-size:10px;background:{% cycle '#F97316' '#3B82F6' '#8B5CF6' '#16A34A' %};">
+                    {{ entry.agent.first_name|first|default:entry.agent.username|first|upper }}
+                  </div>
+                  <span style="font-weight:600;font-size:13px;">{{ entry.agent.get_full_name|default:entry.agent.username }}</span>
+                </div>
+              </td>
+              <td style="font-weight:700;">{{ entry.total_calls }}</td>
+              <td>{{ entry.total_leads }}</td>
+              <td style="color:var(--brand-green);font-weight:700;">{{ entry.conversions }}</td>
+              <td>
+                <span style="font-weight:800;
+                  {% if entry.conversion_rate >= 15 %}color:var(--brand-green);
+                  {% elif entry.conversion_rate >= 8 %}color:var(--brand-orange);
+                  {% else %}color:#EF4444;{% endif %}">
+                  {{ entry.conversion_rate }}%
+                </span>
+              </td>
+              <td style="font-size:12px;color:#64748B;">{{ entry.avg_duration|default:"—" }}</td>
+              <td>
+                <div class="crm-progress" style="width:80px;display:inline-block;">
+                  <div class="crm-progress-fill crm-progress-orange" style="width:{{ entry.conversion_rate|default:0 }}%;max-width:100%;"></div>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center py-4" style="color:#94A3B8;">No data yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- CALL ANALYTICS -->
+  <div class="tab-pane fade" id="tab-calls">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="crm-card h-100">
+          <div class="crm-card-title"><i class="bi bi-clock"></i> Calls by Hour of Day</div>
+          <canvas id="hourlyChart" height="260"></canvas>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="crm-card h-100">
+          <div class="crm-card-title"><i class="bi bi-calendar-week"></i> Calls by Day of Week</div>
+          <canvas id="weekdayChart" height="260"></canvas>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="crm-card">
+          <div class="crm-card-title"><i class="bi bi-tag"></i> Disposition Breakdown</div>
+          <div class="table-responsive">
+            <table class="crm-table">
+              <thead><tr><th>Disposition</th><th>Count</th><th>% of Total</th><th>Distribution</th></tr></thead>
+              <tbody>
+                {% for disp in disposition_breakdown %}
+                <tr>
+                  <td style="font-weight:600;">{{ disp.label }}</td>
+                  <td style="font-weight:700;">{{ disp.count }}</td>
+                  <td>{{ disp.pct|default:0 }}%</td>
+                  <td style="width:180px;">
+                    <div class="crm-progress">
+                      <div class="crm-progress-fill crm-progress-orange" style="width:{{ disp.pct|default:0 }}%;max-width:100%;"></div>
+                    </div>
+                  </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="text-center py-3" style="color:#94A3B8;">No call data.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEAL PIPELINE -->
+  <div class="tab-pane fade" id="tab-pipeline">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="stat-card stat-orange">
+          <div class="stat-label">Active Pipeline</div>
+          <div class="stat-value" style="font-size:20px;">₹{{ pipeline.active_value|default:0|floatformat:0 }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="stat-card stat-green">
+          <div class="stat-label">Won Value</div>
+          <div class="stat-value" style="font-size:20px;">₹{{ pipeline.won_value|default:0|floatformat:0 }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="stat-card stat-blue">
+          <div class="stat-label">Avg Deal Size</div>
+          <div class="stat-value" style="font-size:20px;">₹{{ pipeline.avg_deal|default:0|floatformat:0 }}</div>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="crm-card">
+          <div class="crm-card-title"><i class="bi bi-bar-chart-steps"></i> Pipeline by Stage</div>
+          <canvas id="pipelineChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Pass data to JS -->
+<script>
+const trendData       = {{ trend_data|default:"[]"|safe }};
+const funnelData      = {{ funnel_data|default:"[]"|safe }};
+const sourceData      = {{ source_data|default:"[]"|safe }};
+const hourlyData      = {{ hourly_data|default:"[]"|safe }};
+const weekdayData     = {{ weekday_data|default:"[]"|safe }};
+const pipelineStages  = {{ pipeline_stages|default:"[]"|safe }};
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ORANGE = '#F97316', GREEN = '#16A34A', BLUE = '#3B82F6';
+const COLORS  = [ORANGE, GREEN, BLUE, '#8B5CF6', '#0D9488', '#DC2626', '#CA8A04'];
+
+// ── Trend Chart ──
+if (trendData.length) {
+  new Chart(document.getElementById('trendChart'), {
+    type: 'bar',
+    data: {
+      labels: trendData.map(d => d.date),
+      datasets: [
+        { label: 'New Leads', data: trendData.map(d => d.new_leads), backgroundColor: 'rgba(249,115,22,0.25)', borderColor: ORANGE, borderWidth: 2, borderRadius: 3 },
+        { label: 'Calls Made', data: trendData.map(d => d.calls), type: 'line', borderColor: GREEN, backgroundColor: 'transparent', tension: 0.4, pointRadius: 3 },
+      ]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false } } } }
+  });
+}
+
+// ── Source Pie ──
+if (sourceData.length) {
+  new Chart(document.getElementById('sourceChart'), {
+    type: 'doughnut',
+    data: {
+      labels: sourceData.map(d => d.source || 'Unknown'),
+      datasets: [{ data: sourceData.map(d => d.count), backgroundColor: COLORS, borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } }, cutout: '60%' }
+  });
+}
+
+// ── Hourly Chart ──
+if (hourlyData.length) {
+  new Chart(document.getElementById('hourlyChart'), {
+    type: 'bar',
+    data: {
+      labels: hourlyData.map(d => d.hour + ':00'),
+      datasets: [{ label: 'Calls', data: hourlyData.map(d => d.count), backgroundColor: 'rgba(249,115,22,0.7)', borderRadius: 3 }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false } } } }
+  });
+}
+
+// ── Weekday Chart ──
+if (weekdayData.length) {
+  new Chart(document.getElementById('weekdayChart'), {
+    type: 'bar',
+    data: {
+      labels: weekdayData.map(d => d.day_name),
+      datasets: [{ label: 'Calls', data: weekdayData.map(d => d.count), backgroundColor: 'rgba(22,163,74,0.65)', borderRadius: 3 }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false } } } }
+  });
+}
+
+// ── Pipeline Horizontal Bar ──
+if (pipelineStages.length) {
+  new Chart(document.getElementById('pipelineChart'), {
+    type: 'bar',
+    data: {
+      labels: pipelineStages.map(d => d.label),
+      datasets: [{ label: 'Value (₹)', data: pipelineStages.map(d => d.value), backgroundColor: COLORS, borderRadius: 4 }]
+    },
+    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+  });
+}
+</script>
+{% endblock %}
+
+{% block extra_css %}
+.nav-tabs .nav-link { font-size:13px;font-weight:600;color:#64748B;border:none;padding:8px 16px; }
+.nav-tabs .nav-link.active { color:var(--brand-orange)!important;border-bottom:2px solid var(--brand-orange)!important;background:transparent!important; }
+{% endblock %}

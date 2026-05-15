@@ -1,0 +1,167 @@
+{% extends "base/base.html" %}
+
+{% block title %}Edit {{ agent.get_full_name|default:agent.username }} — DialEasy CRM{% endblock %}
+{% block page_title %}Edit Agent{% endblock %}
+{% block page_sub %}Update profile, targets and access settings{% endblock %}
+
+{% block topbar_action %}
+<a href="{% url 'agents:agent_detail' agent.id %}" class="btn-crm-outline">
+  <i class="bi bi-arrow-left"></i> Back to Profile
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  <!-- ── Left: Avatar + Quick Info ── -->
+  <div class="col-md-3">
+    <div class="crm-card text-center mb-3">
+      <div class="agent-av mx-auto mb-3" style="width:60px;height:60px;font-size:22px;background:var(--brand-orange);border-radius:16px;">
+        {{ agent.first_name|first|default:agent.username|first|upper }}{{ agent.last_name|first|upper }}
+      </div>
+      <div style="font-size:14px;font-weight:700;">{{ agent.get_full_name|default:agent.username }}</div>
+      <div style="font-size:12px;color:#64748B;">{{ agent.email }}</div>
+      <div class="mt-2">
+        <span class="badge-status badge-active">
+          {% if agent_profile.is_active %}Active{% else %}Inactive{% endif %}
+        </span>
+      </div>
+    </div>
+
+    <div class="crm-card">
+      <div class="crm-card-title" style="font-size:12px;"><i class="bi bi-info-circle"></i> Joined</div>
+      <div style="font-size:13px;">{{ agent.date_joined|date:"d M Y" }}</div>
+      <hr class="divider">
+      <div class="crm-card-title" style="font-size:12px;"><i class="bi bi-bar-chart"></i> Stats</div>
+      <div style="font-size:13px;">{{ agent_profile.total_leads_assigned }} leads</div>
+      <div style="font-size:13px;">{{ agent_profile.total_calls_made }} calls</div>
+      <div style="font-size:13px;color:var(--brand-green);font-weight:600;">{{ agent_profile.total_conversions }} converted</div>
+    </div>
+  </div>
+
+  <!-- ── Right: Edit Form ── -->
+  <div class="col-md-9">
+    <form method="post" action="{% url 'agents:update_agent' agent.id %}">
+      {% csrf_token %}
+
+      <!-- Personal Info -->
+      <div class="crm-card mb-3">
+        <div class="crm-card-title"><i class="bi bi-person"></i> Personal Information</div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">First Name</label>
+            <input type="text" name="first_name" class="form-control" value="{{ agent.first_name }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Last Name</label>
+            <input type="text" name="last_name" class="form-control" value="{{ agent.last_name }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Email Address</label>
+            <input type="email" name="email" class="form-control" value="{{ agent.email }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Phone Number</label>
+            <input type="tel" name="phone" class="form-control" value="{{ agent_profile.phone|default:'' }}" placeholder="+91 98765 43210">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Department</label>
+            <input type="text" name="department" class="form-control" value="{{ agent_profile.department|default:'' }}" placeholder="e.g. Sales, Presales">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Hire Date</label>
+            <input type="date" name="hire_date" class="form-control" value="{{ agent_profile.hire_date|date:'Y-m-d' }}">
+          </div>
+        </div>
+      </div>
+
+      <!-- Role & Access -->
+      <div class="crm-card mb-3">
+        <div class="crm-card-title"><i class="bi bi-shield-check"></i> Role & Access</div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Role</label>
+            <select name="role" class="form-select">
+              <option value="agent"   {% if agent_profile.role == 'agent' %}selected{% endif %}>Agent — Standard telecaller</option>
+              <option value="manager" {% if agent_profile.role == 'manager' %}selected{% endif %}>Manager — View all agents</option>
+              <option value="admin"   {% if agent_profile.role == 'admin' %}selected{% endif %}>Tenant Admin — Full access</option>
+            </select>
+            <div class="form-text" style="font-size:11px;color:#94A3B8;">Managers can view all agent data. Admins have full tenant access.</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Account Status</label>
+            <div class="d-flex align-items-center gap-3 mt-2">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="is_active" id="isActive" style="width:2.5rem;height:1.25rem;"
+                  {% if agent_profile.is_active %}checked{% endif %}>
+                <label class="form-check-label" for="isActive" style="font-size:13px;font-weight:500;margin-left:6px;">
+                  {% if agent_profile.is_active %}Agent is Active{% else %}Agent is Inactive{% endif %}
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Call Recording</label>
+            <div class="form-check form-switch mt-2">
+              <input class="form-check-input" type="checkbox" name="call_recording_enabled" id="callRec" style="width:2.5rem;height:1.25rem;"
+                {% if agent_profile.call_recording_enabled %}checked{% endif %}>
+              <label class="form-check-label" for="callRec" style="font-size:13px;font-weight:500;margin-left:6px;">Enable Call Recording</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Targets -->
+      <div class="crm-card mb-3">
+        <div class="crm-card-title"><i class="bi bi-bullseye"></i> Daily & Monthly Targets</div>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Calls per Day Target</label>
+            <input type="number" name="target_calls_per_day" class="form-control"
+              value="{{ agent_profile.target_calls_per_day|default:50 }}" min="0" max="999">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Conversions per Month</label>
+            <input type="number" name="target_conversions_per_month" class="form-control"
+              value="{{ agent_profile.target_conversions_per_month|default:10 }}" min="0" max="999">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Revenue Target (₹)</label>
+            <input type="number" name="target_revenue" class="form-control" placeholder="Optional" min="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- Change Password (optional) -->
+      <div class="crm-card mb-4">
+        <div class="crm-card-title"><i class="bi bi-key"></i> Change Password <span style="font-size:11px;color:#94A3B8;font-weight:400;">(leave blank to keep current)</span></div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">New Password</label>
+            <input type="password" name="new_password" class="form-control" placeholder="Min. 8 characters" autocomplete="new-password">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Confirm Password</label>
+            <input type="password" name="confirm_password" class="form-control" placeholder="Repeat password">
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-3 justify-content-end">
+        <a href="{% url 'agents:agent_detail' agent.id %}" class="btn-crm-outline">Cancel</a>
+        <button type="submit" class="btn-crm-primary">
+          <i class="bi bi-check-lg"></i> Save Changes
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('isActive')?.addEventListener('change', function() {
+  this.nextElementSibling.textContent = this.checked ? 'Agent is Active' : 'Agent is Inactive';
+});
+</script>
+{% endblock %}

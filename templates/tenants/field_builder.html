@@ -1,0 +1,320 @@
+{% extends "base/base.html" %}
+
+{% block title %}Lead Field Builder — Super Admin{% endblock %}
+{% block page_title %}Lead Field Builder{% endblock %}
+{% block page_sub %}Design custom lead form fields per tenant{% endblock %}
+
+{% block content %}
+
+<!-- Tenant Selector -->
+<div class="crm-card mb-4">
+  <form method="get" class="d-flex gap-3 align-items-end flex-wrap">
+    <div style="flex:1;min-width:200px;">
+      <label class="form-label">Select Tenant</label>
+      <select name="tenant" class="form-select" onchange="this.form.submit()">
+        <option value="">— Choose a tenant —</option>
+        {% for tenant in tenants %}
+        <option value="{{ tenant.schema_name }}" {% if selected_tenant == tenant.schema_name %}selected{% endif %}>
+          {{ tenant.name }} ({{ tenant.schema_name }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+</div>
+
+{% if selected_tenant %}
+<div class="row g-3">
+
+  <!-- ── Current Fields ── -->
+  <div class="col-md-7">
+    <div class="crm-card">
+      <div class="crm-card-title d-flex justify-content-between">
+        <span><i class="bi bi-list-ul"></i> Current Fields — {{ selected_tenant_name }}</span>
+        <span style="font-size:12px;color:#94A3B8;font-weight:400;">Drag to reorder</span>
+      </div>
+
+      <div id="fields-list" style="min-height:100px;">
+        {% for field in fields %}
+        <div class="field-row" data-id="{{ field.id }}" style="
+          display:flex;align-items:center;gap:10px;
+          padding:10px 12px;
+          background:var(--bg,#F8FAFC);
+          border-radius:9px;
+          margin-bottom:8px;
+          border:1px solid var(--border-color);
+          cursor:grab;
+          transition:border-color 0.15s,background 0.15s;
+        " draggable="true">
+          <i class="bi bi-grip-vertical" style="color:#CBD5E1;font-size:16px;flex-shrink:0;cursor:grab;"></i>
+
+          <div style="display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap;">
+            <span style="background:var(--brand-orange-light);color:var(--brand-orange-dark,#C2410C);border-radius:6px;padding:2px 9px;font-size:10.5px;font-weight:700;">
+              {{ field.field_type|upper }}
+            </span>
+            <span style="font-size:13px;font-weight:600;">{{ field.label }}</span>
+            {% if field.placeholder %}
+            <span style="font-size:11px;color:#94A3B8;">{{ field.placeholder }}</span>
+            {% endif %}
+          </div>
+
+          <div class="d-flex gap-1 align-items-center" style="flex-shrink:0;">
+            {% if field.is_required %}
+            <span style="font-size:10px;font-weight:700;color:var(--brand-green);background:#F0FDF4;padding:2px 8px;border-radius:10px;">Required</span>
+            {% else %}
+            <span style="font-size:10px;font-weight:700;color:#94A3B8;background:#F1F5F9;padding:2px 8px;border-radius:10px;">Optional</span>
+            {% endif %}
+
+            <button class="icon-btn edit-field-btn"
+              style="width:26px;height:26px;font-size:13px;color:var(--brand-orange);border-color:var(--brand-orange-mid);"
+              data-id="{{ field.id }}"
+              data-label="{{ field.label }}"
+              data-type="{{ field.field_type }}"
+              data-placeholder="{{ field.placeholder|default:'' }}"
+              data-required="{{ field.is_required|yesno:'true,false' }}"
+              data-show-list="{{ field.show_in_list|yesno:'true,false' }}"
+              title="Edit">
+              <i class="bi bi-pencil"></i>
+            </button>
+
+            <form method="post" action="#" style="display:inline;" onsubmit="return confirm('Delete this field?')">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="delete_field">
+              <input type="hidden" name="field_id" value="{{ field.id }}">
+              <button type="submit" class="icon-btn" style="width:26px;height:26px;font-size:13px;color:#EF4444;border-color:#FCA5A5;" title="Delete">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-4" style="color:#94A3B8;font-size:13px;">
+          No custom fields yet. Add one using the panel on the right.
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Save Order -->
+      <form method="post" action="#" id="reorder-form" class="mt-3">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="reorder_fields">
+        <input type="hidden" name="order" id="field-order">
+        <button type="submit" class="btn-crm-outline w-100" style="font-size:12px;">
+          <i class="bi bi-arrow-down-up"></i> Save Field Order
+        </button>
+      </form>
+    </div>
+
+    <!-- Default Fields Info -->
+    <div class="crm-card mt-3" style="border-left:3px solid var(--brand-orange);">
+      <div class="crm-card-title" style="font-size:12px;"><i class="bi bi-lock"></i> Core Fields (Always Present)</div>
+      <div class="d-flex flex-wrap gap-2">
+        {% for f in core_fields %}
+        <span style="background:#F1F5F9;color:#475569;border-radius:7px;padding:4px 10px;font-size:12px;font-weight:500;">
+          {{ f }}
+        </span>
+        {% empty %}
+        <span style="background:#F1F5F9;color:#475569;border-radius:7px;padding:4px 10px;font-size:12px;">Name</span>
+        <span style="background:#F1F5F9;color:#475569;border-radius:7px;padding:4px 10px;font-size:12px;">Phone</span>
+        <span style="background:#F1F5F9;color:#475569;border-radius:7px;padding:4px 10px;font-size:12px;">Email</span>
+        <span style="background:#F1F5F9;color:#475569;border-radius:7px;padding:4px 10px;font-size:12px;">Status</span>
+        <span style="background:#F1F5F9;color:#475569;border-radius:7px;padding:4px 10px;font-size:12px;">Source</span>
+        <span style="background:#F1F5F9;color:#475569;border-radius:7px;padding:4px 10px;font-size:12px;">Assigned Agent</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Add Field Form ── -->
+  <div class="col-md-5">
+    <div class="crm-card mb-3" id="field-form-card">
+      <div class="crm-card-title" id="field-form-title"><i class="bi bi-plus-circle"></i> Add New Field</div>
+      <form method="post" action="#" id="field-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_field" id="field-action">
+        <input type="hidden" name="tenant_schema" value="{{ selected_tenant }}">
+        <input type="hidden" name="field_id" id="field-edit-id">
+
+        <div class="mb-3">
+          <label class="form-label">Field Label *</label>
+          <input type="text" name="label" id="field-label" class="form-control" placeholder="e.g. Budget Range, City, Loan Amount" required>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Field Type *</label>
+          <select name="field_type" id="field-type" class="form-select" required>
+            <option value="">Choose type…</option>
+            <optgroup label="Text">
+              <option value="text">Text (short)</option>
+              <option value="textarea">Textarea (long)</option>
+            </optgroup>
+            <optgroup label="Numbers & Dates">
+              <option value="number">Number</option>
+              <option value="date">Date</option>
+              <option value="datetime">Date & Time</option>
+            </optgroup>
+            <optgroup label="Contact">
+              <option value="phone">Phone</option>
+              <option value="email">Email</option>
+              <option value="url">URL</option>
+            </optgroup>
+            <optgroup label="Choices">
+              <option value="select">Dropdown (single)</option>
+              <option value="multiselect">Multi-select</option>
+              <option value="radio">Radio Buttons</option>
+              <option value="checkbox">Checkbox</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <!-- Choices (for select/radio/multiselect) -->
+        <div id="choices-section" style="display:none;" class="mb-3">
+          <label class="form-label">Options <span style="color:#94A3B8;font-weight:400;">(one per line)</span></label>
+          <textarea name="choices" id="field-choices" class="form-control" rows="4"
+            placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Placeholder Text</label>
+          <input type="text" name="placeholder" id="field-placeholder" class="form-control" placeholder="e.g. Enter your budget…">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Sort Order</label>
+          <input type="number" name="sort_order" id="field-sort" class="form-control" value="{{ fields|length|add:1 }}" min="1">
+        </div>
+
+        <div class="mb-2">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="is_required" id="field-required" style="width:2.5rem;height:1.25rem;">
+            <label class="form-check-label" for="field-required" style="font-size:13px;font-weight:500;margin-left:6px;">Required field</label>
+          </div>
+        </div>
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="show_in_list" id="field-show-list" style="width:2.5rem;height:1.25rem;">
+            <label class="form-check-label" for="field-show-list" style="font-size:13px;font-weight:500;margin-left:6px;">Show in lead list column</label>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn-crm-primary flex-grow-1">
+            <i class="bi bi-check-lg" id="field-submit-icon"></i>
+            <span id="field-submit-text">Add Field</span>
+          </button>
+          <button type="button" id="cancel-edit-btn" onclick="resetForm()" class="btn-crm-outline" style="display:none;">
+            <i class="bi bi-x"></i>
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Disposition Builder -->
+    <div class="crm-card">
+      <div class="crm-card-title"><i class="bi bi-tag"></i> Call Dispositions</div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:12px;">Custom call outcomes for agents in this tenant.</div>
+
+      {% for disp in dispositions %}
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#F8FAFC;border-radius:8px;margin-bottom:6px;border:1px solid var(--border-color);">
+        <i class="bi bi-grip-vertical" style="color:#CBD5E1;font-size:14px;cursor:grab;"></i>
+        <span style="flex:1;font-size:12px;font-weight:500;">{{ disp.label }}</span>
+        {% if disp.is_active %}<span style="font-size:10px;color:var(--brand-green);font-weight:700;">Active</span>{% else %}<span style="font-size:10px;color:#94A3B8;">Inactive</span>{% endif %}
+        <i class="bi bi-pencil" style="cursor:pointer;color:var(--brand-orange);font-size:13px;"></i>
+      </div>
+      {% empty %}
+      <div style="color:#94A3B8;font-size:12px;font-style:italic;text-align:center;padding:10px 0;">No custom dispositions. Using defaults.</div>
+      {% endfor %}
+
+      <form method="post" action="#" class="mt-2">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_disposition">
+        <input type="hidden" name="tenant_schema" value="{{ selected_tenant }}">
+        <div class="input-group">
+          <input type="text" name="label" class="form-control form-control-sm" placeholder="New disposition label…" required>
+          <button type="submit" class="btn-crm-primary" style="font-size:12px;padding:5px 12px;border-radius:0 9px 9px 0;">
+            <i class="bi bi-plus-lg"></i> Add
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<div class="crm-card text-center py-5">
+  <i class="bi bi-building" style="font-size:40px;color:#CBD5E1;display:block;margin-bottom:12px;"></i>
+  <div style="font-size:16px;font-weight:700;color:#94A3B8;">Select a tenant above to manage their lead fields.</div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Show/hide choices textarea based on field type ──
+document.getElementById('field-type')?.addEventListener('change', function() {
+  const showChoices = ['select','multiselect','radio'].includes(this.value);
+  document.getElementById('choices-section').style.display = showChoices ? 'block' : 'none';
+});
+
+// ── Populate edit form when edit btn clicked ──
+document.querySelectorAll('.edit-field-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.getElementById('field-action').value   = 'edit_field';
+    document.getElementById('field-edit-id').value  = btn.dataset.id;
+    document.getElementById('field-label').value    = btn.dataset.label;
+    document.getElementById('field-type').value     = btn.dataset.type;
+    document.getElementById('field-placeholder').value = btn.dataset.placeholder;
+    document.getElementById('field-required').checked  = btn.dataset.required === 'true';
+    document.getElementById('field-show-list').checked = btn.dataset.showList === 'true';
+    document.getElementById('field-submit-icon').className = 'bi bi-check-lg';
+    document.getElementById('field-submit-text').textContent = 'Save Changes';
+    document.getElementById('field-form-title').innerHTML = '<i class="bi bi-pencil text-orange"></i> Edit Field';
+    document.getElementById('cancel-edit-btn').style.display = 'inline-flex';
+    document.getElementById('field-form-card').style.borderLeft = '3px solid var(--brand-orange)';
+    document.getElementById('field-label').focus();
+
+    // Scroll to form
+    document.getElementById('field-form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+
+function resetForm() {
+  document.getElementById('field-action').value = 'add_field';
+  document.getElementById('field-edit-id').value = '';
+  document.getElementById('field-form').reset();
+  document.getElementById('field-submit-text').textContent = 'Add Field';
+  document.getElementById('field-form-title').innerHTML = '<i class="bi bi-plus-circle text-orange"></i> Add New Field';
+  document.getElementById('cancel-edit-btn').style.display = 'none';
+  document.getElementById('field-form-card').style.borderLeft = '';
+}
+
+// ── Drag-to-reorder ──
+const list = document.getElementById('fields-list');
+if (list) {
+  let dragged = null;
+
+  list.addEventListener('dragstart', e => {
+    dragged = e.target.closest('.field-row');
+    setTimeout(() => { if (dragged) dragged.style.opacity = '0.4'; }, 0);
+  });
+
+  list.addEventListener('dragend', e => {
+    if (dragged) dragged.style.opacity = '1';
+    dragged = null;
+    // Collect order
+    const ids = [...list.querySelectorAll('.field-row')].map(r => r.dataset.id);
+    document.getElementById('field-order').value = ids.join(',');
+  });
+
+  list.addEventListener('dragover', e => {
+    e.preventDefault();
+    const target = e.target.closest('.field-row');
+    if (target && target !== dragged) {
+      const rect = target.getBoundingClientRect();
+      const after = e.clientY > rect.top + rect.height / 2;
+      list.insertBefore(dragged, after ? target.nextSibling : target);
+    }
+  });
+}
+</script>
+{% endblock %}

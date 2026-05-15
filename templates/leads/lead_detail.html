@@ -1,0 +1,592 @@
+{% extends "base/base.html" %}
+
+{% block title %}{{ lead.name }} — DialEasy CRM{% endblock %}
+{% block page_title %}{{ lead.name }}{% endblock %}
+{% block page_sub %}
+  Lead #{{ lead.id }} ·
+  <span class="badge-status badge-{{ lead.status }}" style="font-size:11px;">{{ lead.get_status_display }}</span>
+  {% if lead.lead_score >= 70 %}<span style="font-size:12px;color:var(--brand-green);margin-left:6px;font-weight:700;"><i class="bi bi-fire"></i> Hot lead</span>{% endif %}
+{% endblock %}
+
+{% block topbar_action %}
+<a href="{% url 'leads:lead_list' %}" class="btn-crm-outline me-2"><i class="bi bi-arrow-left"></i> Back</a>
+<button class="btn-crm-primary" data-bs-toggle="modal" data-bs-target="#logCallModal">
+  <i class="bi bi-telephone-plus"></i> Log Call
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  <!-- ══ LEFT COLUMN ══ -->
+  <div class="col-lg-4">
+
+    <!-- Lead Card -->
+    <div class="crm-card mb-3">
+      <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:54px;height:54px;border-radius:14px;background:var(--brand-orange);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;flex-shrink:0;">
+          {{ lead.name|first|upper }}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ lead.name }}</div>
+          {% if lead.company %}<div style="font-size:12px;color:#64748B;">{{ lead.company }}</div>{% endif %}
+          {% if lead.designation %}<div style="font-size:11px;color:#94A3B8;">{{ lead.designation }}</div>{% endif %}
+        </div>
+      </div>
+
+      <!-- Score bar -->
+      <div class="mb-3">
+        <div class="d-flex justify-content-between mb-1" style="font-size:11px;color:#64748B;">
+          <span>Lead Score</span>
+          <strong style="color:{% if lead.lead_score >= 70 %}var(--brand-green){% elif lead.lead_score >= 40 %}var(--brand-orange){% else %}#EF4444{% endif %};">
+            {{ lead.lead_score }}/100
+          </strong>
+        </div>
+        <div class="crm-progress">
+          <div class="crm-progress-fill {% if lead.lead_score >= 70 %}crm-progress-green{% else %}crm-progress-orange{% endif %}"
+            style="width:{{ lead.lead_score }}%;"></div>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Fields Grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
+        {% if lead.phone %}
+        <div>
+          <div class="stat-label" style="font-size:10px;">Phone</div>
+          <a href="tel:{{ lead.phone }}" style="font-weight:600;color:#0F172A;text-decoration:none;">{{ lead.phone }}</a>
+        </div>
+        {% endif %}
+        {% if lead.email %}
+        <div>
+          <div class="stat-label" style="font-size:10px;">Email</div>
+          <a href="mailto:{{ lead.email }}" style="font-size:12px;color:var(--brand-orange);">{{ lead.email }}</a>
+        </div>
+        {% endif %}
+        {% if lead.source %}
+        <div>
+          <div class="stat-label" style="font-size:10px;">Source</div>
+          <div>{{ lead.source }}</div>
+        </div>
+        {% endif %}
+        {% if lead.city or lead.state %}
+        <div>
+          <div class="stat-label" style="font-size:10px;">Location</div>
+          <div>{{ lead.city }}{% if lead.city and lead.state %}, {% endif %}{{ lead.state }}</div>
+        </div>
+        {% endif %}
+        {% if lead.industry %}
+        <div>
+          <div class="stat-label" style="font-size:10px;">Industry</div>
+          <div>{{ lead.industry }}</div>
+        </div>
+        {% endif %}
+        {% if lead.deal_value %}
+        <div>
+          <div class="stat-label" style="font-size:10px;">Deal Value</div>
+          <div style="font-weight:700;color:var(--brand-green);">₹{{ lead.deal_value|floatformat:0 }}</div>
+        </div>
+        {% endif %}
+        <div>
+          <div class="stat-label" style="font-size:10px;">Created</div>
+          <div>{{ lead.created_at|date:"d M Y" }}</div>
+        </div>
+        <div>
+          <div class="stat-label" style="font-size:10px;">Updated</div>
+          <div>{{ lead.updated_at|date:"d M Y" }}</div>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Status Update -->
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#94A3B8;margin-bottom:8px;">Update Status</div>
+      <form method="post" action="#" class="d-flex gap-2">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="update_status">
+        <select name="status" class="form-select form-select-sm">
+          {% for val, label in lead.STATUS_CHOICES %}
+          <option value="{{ val }}" {% if lead.status == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-crm-primary" style="font-size:12px;padding:5px 12px;white-space:nowrap;">Update</button>
+      </form>
+
+      <hr class="divider">
+
+      <!-- Assigned Agent -->
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#94A3B8;margin-bottom:8px;">Assigned Agent</div>
+      {% if lead.assigned_agent %}
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <div class="agent-av" style="background:#3B82F6;width:30px;height:30px;font-size:11px;">
+          {{ lead.assigned_agent.first_name|first|default:lead.assigned_agent.username|first|upper }}
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:600;">{{ lead.assigned_agent.get_full_name|default:lead.assigned_agent.username }}</div>
+          <div style="font-size:11px;color:#64748B;">{{ lead.assigned_agent.email }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div style="font-size:13px;color:#94A3B8;font-style:italic;margin-bottom:8px;">Unassigned</div>
+      {% endif %}
+      <a href="{% url 'leads:assign_leads' %}" class="btn-crm-outline w-100 justify-content-center" style="font-size:12px;">
+        <i class="bi bi-person-plus"></i> Reassign Lead
+      </a>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="crm-card mb-3">
+      <div class="crm-card-title"><i class="bi bi-lightning-charge"></i> Quick Actions</div>
+      <div class="d-grid gap-2">
+        <button class="btn-crm-primary" data-bs-toggle="modal" data-bs-target="#logCallModal">
+          <i class="bi bi-telephone-plus"></i> Log Call
+        </button>
+        <button class="btn-crm-outline" data-bs-toggle="modal" data-bs-target="#followUpModal">
+          <i class="bi bi-calendar-plus"></i> Schedule Follow-up
+        </button>
+        <button class="btn-crm-outline" data-bs-toggle="modal" data-bs-target="#addNoteModal">
+          <i class="bi bi-sticky"></i> Add Note
+        </button>
+        <button class="btn-crm-outline" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+          <i class="bi bi-check2-square"></i> Add Task
+        </button>
+        {% if tenant_features.whatsapp_api %}
+        <button class="btn-crm-success" style="font-size:13px;" data-bs-toggle="modal" data-bs-target="#sendWhatsappModal">
+          <i class="bi bi-whatsapp"></i> Send WhatsApp
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT COLUMN ══ -->
+  <div class="col-lg-8">
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3" id="leadTabs">
+      <li class="nav-item"><button class="nav-link active"  data-bs-toggle="tab" data-bs-target="#tab-calls"><i class="bi bi-telephone"></i> Calls <span class="badge bg-secondary ms-1" style="font-size:10px;">{{ call_logs|length }}</span></button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-notes"><i class="bi bi-sticky"></i> Notes <span class="badge bg-secondary ms-1" style="font-size:10px;">{{ lead_notes|length }}</span></button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-tasks"><i class="bi bi-check2-square"></i> Tasks <span class="badge bg-secondary ms-1" style="font-size:10px;">{{ lead_tasks|length }}</span></button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-followups"><i class="bi bi-calendar-check"></i> Follow-ups <span class="badge bg-secondary ms-1" style="font-size:10px;">{{ follow_ups|length }}</span></button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-products"><i class="bi bi-box-seam"></i> Products</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-activity"><i class="bi bi-activity"></i> Activity</button></li>
+    </ul>
+
+    <div class="tab-content">
+
+      <!-- CALLS TAB -->
+      <div class="tab-pane fade show active" id="tab-calls">
+        {% for call in call_logs %}
+        <div class="crm-card mb-2">
+          <div class="d-flex gap-3 align-items-start">
+            <div style="width:38px;height:38px;border-radius:50%;background:var(--brand-orange-light);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="bi bi-telephone" style="color:var(--brand-orange);font-size:16px;"></i>
+            </div>
+            <div style="flex:1;">
+              <div class="d-flex justify-content-between flex-wrap gap-2">
+                <div>
+                  <span style="font-size:13px;font-weight:700;">{{ call.get_disposition_display }}</span>
+                  <span style="font-size:12px;color:#64748B;margin-left:8px;">by {{ call.agent.get_full_name|default:call.agent.username }}</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  {% if call.duration %}<span style="font-size:11px;color:#94A3B8;">{{ call.duration }}s</span>{% endif %}
+                  <span style="font-size:11px;color:#94A3B8;">{{ call.call_date|date:"d M Y, g:i A" }}</span>
+                  {% if call.recording %}
+                  <a href="{{ call.recording.url }}" target="_blank" class="icon-btn" title="Play" style="width:26px;height:26px;font-size:13px;color:var(--brand-green);">
+                    <i class="bi bi-play-circle"></i>
+                  </a>
+                  {% endif %}
+                </div>
+              </div>
+              {% if call.remarks %}<p style="font-size:13px;color:#475569;margin-top:6px;line-height:1.6;">{{ call.remarks }}</p>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% empty %}
+        <div class="crm-card text-center py-5">
+          <i class="bi bi-telephone-x" style="font-size:36px;color:#CBD5E1;display:block;margin-bottom:8px;"></i>
+          <span style="color:#94A3B8;">No calls logged yet.</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- NOTES TAB -->
+      <div class="tab-pane fade" id="tab-notes">
+        {% for note in lead_notes %}
+        <div class="crm-card mb-2" style="{% if note.is_pinned %}border-left:3px solid var(--brand-orange);{% endif %}">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div class="d-flex gap-2 align-items-center">
+              {% if note.is_pinned %}<i class="bi bi-pin-fill text-orange" style="font-size:13px;"></i>{% endif %}
+              <span class="badge-status badge-new">{{ note.get_note_type_display }}</span>
+            </div>
+            <span style="font-size:11px;color:#94A3B8;">{{ note.created_at|date:"d M Y, g:i A" }}</span>
+          </div>
+          <p style="font-size:13px;line-height:1.7;color:#475569;margin:0;">{{ note.content }}</p>
+          <div style="font-size:11px;color:#94A3B8;margin-top:6px;">— {{ note.author.get_full_name|default:note.author.username }}</div>
+        </div>
+        {% empty %}
+        <div class="crm-card text-center py-5">
+          <span style="color:#94A3B8;">No notes yet.</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- TASKS TAB -->
+      <div class="tab-pane fade" id="tab-tasks">
+        {% for task in lead_tasks %}
+        <div class="crm-card mb-2">
+          <div class="d-flex align-items-start gap-3">
+            <div style="margin-top:2px;">
+              {% if task.status == 'done' %}
+              <i class="bi bi-check-circle-fill" style="font-size:18px;color:var(--brand-green);"></i>
+              {% elif task.is_overdue %}
+              <i class="bi bi-exclamation-circle-fill" style="font-size:18px;color:#EF4444;"></i>
+              {% else %}
+              <i class="bi bi-circle" style="font-size:18px;color:#CBD5E1;"></i>
+              {% endif %}
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;{% if task.status == 'done' %}text-decoration:line-through;color:#94A3B8;{% endif %}">{{ task.title }}</div>
+              <div style="font-size:11px;color:#64748B;margin-top:3px;">
+                {% if task.assigned_to %}Assigned to {{ task.assigned_to.get_full_name|default:task.assigned_to.username }} · {% endif %}
+                {% if task.due_date %}Due {{ task.due_date|date:"d M Y" }}{% endif %}
+              </div>
+              {% if task.description %}<p style="font-size:12px;color:#64748B;margin-top:4px;">{{ task.description }}</p>{% endif %}
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+              <span class="badge-status
+                {% if task.priority == 'urgent' %}badge-lost
+                {% elif task.priority == 'high' %}badge-contacted
+                {% elif task.priority == 'medium' %}badge-callback
+                {% else %}badge-inactive{% endif %}">
+                {{ task.priority|capfirst }}
+              </span>
+            </div>
+          </div>
+        </div>
+        {% empty %}
+        <div class="crm-card text-center py-5">
+          <span style="color:#94A3B8;">No tasks yet.</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- FOLLOW-UPS TAB -->
+      <div class="tab-pane fade" id="tab-followups">
+        {% for fu in follow_ups %}
+        <div class="crm-card mb-2">
+          <div class="d-flex gap-3 align-items-start">
+            <div style="width:38px;height:38px;border-radius:50%;background:{% if fu.is_completed %}#F0FDF4{% elif fu.is_overdue %}#FEF2F2{% else %}#FFF7ED{% endif %};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="bi bi-calendar-check" style="font-size:16px;color:{% if fu.is_completed %}var(--brand-green){% elif fu.is_overdue %}#EF4444{% else %}var(--brand-orange){% endif %};"></i>
+            </div>
+            <div style="flex:1;">
+              <div class="d-flex justify-content-between flex-wrap gap-2">
+                <div>
+                  <span style="font-size:13px;font-weight:700;">{% if fu.title %}{{ fu.title }}{% else %}Follow-up{% endif %}</span>
+                  {% if fu.is_overdue and not fu.is_completed %}<span class="badge-status badge-lost ms-2">Overdue</span>{% endif %}
+                </div>
+                <span class="badge-status {% if fu.is_completed %}badge-converted{% else %}badge-callback{% endif %}">
+                  {% if fu.is_completed %}Completed{% else %}Pending{% endif %}
+                </span>
+              </div>
+              <div style="font-size:12px;color:#64748B;margin-top:3px;">
+                {{ fu.follow_up_date|date:"d M Y" }}{% if fu.follow_up_time %} at {{ fu.follow_up_time|time:"g:i A" }}{% endif %}
+                · by {{ fu.agent.get_full_name|default:fu.agent.username }}
+              </div>
+              {% if fu.remarks %}<p style="font-size:12px;color:#475569;margin-top:5px;">{{ fu.remarks }}</p>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% empty %}
+        <div class="crm-card text-center py-5">
+          <span style="color:#94A3B8;">No follow-ups scheduled.</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- PRODUCTS TAB -->
+      <div class="tab-pane fade" id="tab-products">
+        {% for lp in lead_products %}
+        <div class="crm-card mb-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <div style="font-size:13px;font-weight:700;">{{ lp.product.name }}</div>
+              <div style="font-size:12px;color:#64748B;">
+                {{ lp.quantity }} {{ lp.product.unit|default:"pcs" }} × ₹{{ lp.product.price }}
+                {% if lp.discount_percent %} · {{ lp.discount_percent }}% off{% endif %}
+              </div>
+              {% if lp.note %}<div style="font-size:11px;color:#94A3B8;margin-top:3px;">{{ lp.note }}</div>{% endif %}
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:16px;font-weight:800;color:var(--brand-green);">₹{{ lp.total_price|floatformat:0 }}</div>
+              <div style="font-size:11px;color:#94A3B8;">{{ lp.product.sku|default:"" }}</div>
+            </div>
+          </div>
+        </div>
+        {% empty %}
+        <div class="crm-card text-center py-5">
+          <span style="color:#94A3B8;">No products linked.</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- ACTIVITY TAB -->
+      <div class="tab-pane fade" id="tab-activity">
+        <div class="crm-card">
+          <div style="position:relative;padding-left:22px;border-left:2px solid var(--border-color);">
+            {% for activity in lead_activities %}
+            <div style="position:relative;margin-bottom:16px;padding-left:14px;">
+              <div style="position:absolute;left:-29px;top:4px;width:12px;height:12px;border-radius:50%;
+                background:{% if activity.activity_type == 'converted' %}var(--brand-green){% elif activity.activity_type == 'call_logged' %}var(--brand-orange){% elif activity.activity_type == 'created' %}#3B82F6{% else %}#8B5CF6{% endif %};
+                border:2px solid white;box-shadow:0 0 0 1px rgba(0,0,0,0.1);"></div>
+              <div style="font-size:12px;font-weight:700;">{{ activity.get_activity_type_display }}</div>
+              <div style="font-size:12px;color:#475569;margin-top:2px;">{{ activity.description }}</div>
+              <div style="font-size:11px;color:#94A3B8;margin-top:3px;">
+                {% if activity.actor %}{{ activity.actor.get_full_name|default:activity.actor.username }} · {% endif %}
+                {{ activity.created_at|date:"d M Y, g:i A" }}
+              </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-4" style="color:#94A3B8;font-size:13px;">No activity recorded.</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODALS ══ -->
+
+<!-- Log Call Modal -->
+<div class="modal fade" id="logCallModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-telephone-plus text-orange me-2"></i>Log Call — {{ lead.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="#">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="log_call">
+        <div class="modal-body p-4">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Disposition *</label>
+              <select name="disposition" class="form-select" required>
+                <option value="">Select outcome…</option>
+                <option value="interested">Interested</option>
+                <option value="not_interested">Not Interested</option>
+                <option value="callback">Callback Later</option>
+                <option value="no_answer">No Answer</option>
+                <option value="busy">Busy</option>
+                <option value="wrong_number">Wrong Number</option>
+                <option value="converted">Converted</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Update Lead Status</label>
+              <select name="lead_status" class="form-select">
+                {% for val, label in lead.STATUS_CHOICES %}
+                <option value="{{ val }}" {% if lead.status == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Duration (seconds)</label>
+              <input type="number" name="duration" class="form-control" placeholder="e.g. 180" min="0">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Remarks</label>
+              <textarea name="remarks" class="form-control" rows="3" placeholder="What was discussed? Next steps?"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-primary"><i class="bi bi-check-lg"></i> Save Call Log</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Note Modal -->
+<div class="modal fade" id="addNoteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-sticky text-orange me-2"></i>Add Note</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="#">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_note">
+        <div class="modal-body p-4">
+          <div class="mb-3">
+            <label class="form-label">Note Type</label>
+            <select name="note_type" class="form-select">
+              <option value="general">General</option>
+              <option value="call">Call Summary</option>
+              <option value="meeting">Meeting</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="internal">Internal (Private)</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Content *</label>
+            <textarea name="content" class="form-control" rows="4" placeholder="Write your note here…" required></textarea>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="is_pinned" id="pinNote">
+            <label class="form-check-label" for="pinNote" style="font-size:13px;">Pin this note</label>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-primary"><i class="bi bi-check-lg"></i> Add Note</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Task Modal -->
+<div class="modal fade" id="addTaskModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-check2-square text-orange me-2"></i>Add Task</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="#">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_task">
+        <div class="modal-body p-4">
+          <div class="mb-3">
+            <label class="form-label">Task Title *</label>
+            <input type="text" name="title" class="form-control" placeholder="e.g. Send pricing proposal" required>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col">
+              <label class="form-label">Priority</label>
+              <select name="priority" class="form-select">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <div class="col">
+              <label class="form-label">Due Date</label>
+              <input type="datetime-local" name="due_date" class="form-control">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Assign To</label>
+            <select name="assigned_to" class="form-select">
+              <option value="">Self</option>
+              {% for agent in agents %}
+              <option value="{{ agent.id }}">{{ agent.get_full_name|default:agent.username }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-primary"><i class="bi bi-check-lg"></i> Add Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Follow-up Modal -->
+<div class="modal fade" id="followUpModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-calendar-plus text-orange me-2"></i>Schedule Follow-up</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="#">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_followup">
+        <div class="modal-body p-4">
+          <div class="mb-3">
+            <label class="form-label">Title</label>
+            <input type="text" name="title" class="form-control" placeholder="e.g. Price discussion callback">
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col">
+              <label class="form-label">Date *</label>
+              <input type="date" name="follow_up_date" class="form-control" required>
+            </div>
+            <div class="col">
+              <label class="form-label">Time</label>
+              <input type="time" name="follow_up_time" class="form-control">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Priority</label>
+            <select name="priority" class="form-select">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Remarks</label>
+            <textarea name="remarks" class="form-control" rows="2" placeholder="What to discuss?"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-primary"><i class="bi bi-check-lg"></i> Schedule</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Send WhatsApp Modal -->
+<div class="modal fade" id="sendWhatsappModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-whatsapp text-success me-2"></i>Send WhatsApp — {{ lead.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{% url 'leads:send_whatsapp_message' lead.id %}">
+        {% csrf_token %}
+        <div class="modal-body p-4">
+          <div class="mb-3">
+            <label class="form-label">To: <span style="font-weight:600;">{{ lead.phone|default:"No phone number" }}</span></label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Message *</label>
+            <textarea name="message" class="form-control" rows="4" placeholder="Type your WhatsApp message here…" required></textarea>
+            <div class="form-text mt-2" style="font-size:12px;">Ensure your WhatsApp API is correctly configured in Integrations. Outbound messages beyond 24h might require template messages instead.</div>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-success"><i class="bi bi-send"></i> Send</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+.nav-tabs .nav-link { font-size:13px;font-weight:600;color:#64748B;border:none;padding:8px 14px; }
+.nav-tabs .nav-link.active { color:var(--brand-orange)!important;border-bottom:2px solid var(--brand-orange)!important;background:transparent!important; }
+{% endblock %}

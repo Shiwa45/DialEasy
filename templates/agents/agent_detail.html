@@ -1,0 +1,220 @@
+{% extends "base/base.html" %}
+
+{% block title %}{{ agent.get_full_name|default:agent.username }} — DialEasy CRM{% endblock %}
+{% block page_title %}{{ agent.get_full_name|default:agent.username }}{% endblock %}
+{% block page_sub %}Agent Profile & Activity{% endblock %}
+
+{% block topbar_action %}
+<a href="{% url 'agents:agent_performance' agent.id %}" class="btn-crm-outline me-2">
+  <i class="bi bi-graph-up"></i> Performance Report
+</a>
+<a href="{% url 'agents:update_agent' agent.id %}" class="btn-crm-primary">
+  <i class="bi bi-pencil"></i> Edit Agent
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  <!-- ── Agent Card ── -->
+  <div class="col-md-4">
+    <div class="crm-card mb-3">
+      <!-- Avatar & Name -->
+      <div class="text-center mb-4">
+        <div class="agent-av mx-auto mb-3" style="width:64px;height:64px;font-size:22px;background:var(--brand-orange);border-radius:18px;">
+          {{ agent.first_name|first|default:agent.username|first|upper }}{{ agent.last_name|first|upper }}
+        </div>
+        <div style="font-size:16px;font-weight:800;">{{ agent.get_full_name|default:agent.username }}</div>
+        <div style="font-size:12px;color:#64748B;margin-top:2px;">{{ agent.email }}</div>
+        <div class="mt-2">
+          <span class="badge-status badge-active">
+            <span class="status-dot dot-green"></span> Active
+          </span>
+          <span class="badge-status badge-new ms-1">
+            {{ agent_profile.get_role_display|default:"Agent" }}
+          </span>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Quick Stats -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        {% with stats_data=agent_profile %}
+        <div style="text-align:center;background:#FFF7ED;border-radius:10px;padding:12px;">
+          <div style="font-size:20px;font-weight:800;color:var(--brand-orange);">{{ agent_profile.total_leads|default:0 }}</div>
+          <div style="font-size:11px;color:#64748B;font-weight:600;">Total Leads</div>
+        </div>
+        <div style="text-align:center;background:#F0FDF4;border-radius:10px;padding:12px;">
+          <div style="font-size:20px;font-weight:800;color:var(--brand-green);">{{ agent_profile.total_calls|default:0 }}</div>
+          <div style="font-size:11px;color:#64748B;font-weight:600;">Total Calls</div>
+        </div>
+        <div style="text-align:center;background:#EFF6FF;border-radius:10px;padding:12px;">
+          <div style="font-size:20px;font-weight:800;color:#3B82F6;">{{ agent_profile.converted_leads|default:0 }}</div>
+          <div style="font-size:11px;color:#64748B;font-weight:600;">Converted</div>
+        </div>
+        <div style="text-align:center;background:#F5F3FF;border-radius:10px;padding:12px;">
+          <div style="font-size:20px;font-weight:800;color:#8B5CF6;">{{ agent_profile.conversion_rate|default:0 }}%</div>
+          <div style="font-size:11px;color:#64748B;font-weight:600;">Conv. Rate</div>
+        </div>
+        {% endwith %}
+      </div>
+
+      <hr class="divider">
+
+      <!-- Lead Status Breakdown -->
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#94A3B8;margin-bottom:10px;">Lead Status Breakdown</div>
+      {% for item in lead_status_breakdown %}
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span style="font-size:12px;font-weight:600;text-transform:capitalize;">{{ item.status }}</span>
+        <span class="badge-status badge-{{ item.status }}">{{ item.count }}</span>
+      </div>
+      {% endfor %}
+
+      <hr class="divider">
+
+      <!-- Add Note -->
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#94A3B8;margin-bottom:8px;">Admin Note</div>
+      <form method="post" action="{% url 'agents:add_agent_note' agent.id %}">
+        {% csrf_token %}
+        <textarea name="note" class="form-control mb-2" rows="2" placeholder="Add a private note…" style="font-size:12px;"></textarea>
+        <button type="submit" class="btn-crm-outline w-100 justify-content-center" style="font-size:12px;">
+          <i class="bi bi-sticky"></i> Save Note
+        </button>
+      </form>
+    </div>
+
+    <!-- Set Targets -->
+    <div class="crm-card">
+      <div class="crm-card-title"><i class="bi bi-bullseye"></i> Monthly Targets</div>
+      <form method="post" action="{% url 'agents:set_agent_targets' agent.id %}">
+        {% csrf_token %}
+        <div class="mb-2">
+          <label class="form-label">Target Calls / Month</label>
+          <input type="number" name="target_calls" class="form-control form-control-sm"
+            value="{{ current_target.target_calls|default:'' }}" placeholder="e.g. 300">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Target Conversions / Month</label>
+          <input type="number" name="target_conversions" class="form-control form-control-sm"
+            value="{{ current_target.target_conversions|default:'' }}" placeholder="e.g. 30">
+        </div>
+        <input type="month" name="month" class="form-control form-control-sm mb-3">
+        <button type="submit" class="btn-crm-primary w-100 justify-content-center" style="font-size:12px;">
+          <i class="bi bi-check-lg"></i> Save Targets
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: Activity Tabs ── -->
+  <div class="col-md-8">
+    <ul class="nav nav-tabs mb-3">
+      <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#calls-tab" style="font-size:13px;font-weight:600;">
+          <i class="bi bi-telephone"></i> Recent Calls
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#followups-tab" style="font-size:13px;font-weight:600;">
+          <i class="bi bi-calendar-check"></i> Follow-ups
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#notes-tab" style="font-size:13px;font-weight:600;">
+          <i class="bi bi-sticky"></i> Notes
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+
+      <!-- Calls -->
+      <div class="tab-pane fade show active" id="calls-tab">
+        <div class="crm-card">
+          <div class="table-responsive">
+            <table class="crm-table">
+              <thead><tr><th>Lead</th><th>Disposition</th><th>Duration</th><th>Recording</th><th>Date</th></tr></thead>
+              <tbody>
+                {% for call in recent_calls %}
+                <tr>
+                  <td>
+                    <a href="{% url 'leads:lead_detail' call.lead.id %}" style="font-weight:600;color:#0F172A;text-decoration:none;">
+                      {{ call.lead.name }}
+                    </a>
+                    <br><span style="font-size:11px;color:#94A3B8;">{{ call.lead.phone }}</span>
+                  </td>
+                  <td><span class="badge-status badge-contacted">{{ call.get_disposition_display }}</span></td>
+                  <td style="font-size:12px;">{% if call.duration %}{{ call.duration }}s{% else %}—{% endif %}</td>
+                  <td>
+                    {% if call.recording %}
+                    <a href="{{ call.recording.url }}" target="_blank" class="icon-btn" title="Play Recording" style="width:28px;height:28px;font-size:14px;color:var(--brand-green);">
+                      <i class="bi bi-play-circle"></i>
+                    </a>
+                    {% else %}
+                    <span style="color:#CBD5E1;font-size:12px;">—</span>
+                    {% endif %}
+                  </td>
+                  <td style="font-size:11px;color:#64748B;">{{ call.call_date|date:"d M, g:i A" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center py-4" style="color:#94A3B8;font-size:13px;">No calls yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Follow-ups -->
+      <div class="tab-pane fade" id="followups-tab">
+        <div class="crm-card">
+          <div class="table-responsive">
+            <table class="crm-table">
+              <thead><tr><th>Lead</th><th>Title</th><th>Date</th><th>Status</th></tr></thead>
+              <tbody>
+                {% for fu in upcoming_follow_ups %}
+                <tr>
+                  <td><a href="{% url 'leads:lead_detail' fu.lead.id %}" style="font-weight:600;color:#0F172A;text-decoration:none;">{{ fu.lead.name }}</a></td>
+                  <td style="font-size:12px;">{{ fu.title|default:"Follow-up" }}</td>
+                  <td style="font-size:12px;">{{ fu.follow_up_date|date:"d M Y" }}</td>
+                  <td>
+                    <span class="badge-status {% if fu.is_completed %}badge-converted{% else %}badge-callback{% endif %}">
+                      {% if fu.is_completed %}Done{% else %}Pending{% endif %}
+                    </span>
+                  </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="text-center py-4" style="color:#94A3B8;font-size:13px;">No follow-ups.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="tab-pane fade" id="notes-tab">
+        {% for note in agent_notes %}
+        <div class="crm-card mb-2">
+          <div style="font-size:13px;line-height:1.6;">{{ note.note }}</div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:6px;">
+            By {{ note.created_by.get_full_name|default:note.created_by.username }} · {{ note.created_at|date:"d M Y, g:i A" }}
+          </div>
+        </div>
+        {% empty %}
+        <div class="crm-card text-center py-4">
+          <span style="color:#94A3B8;font-size:13px;">No notes yet. Add one from the left panel.</span>
+        </div>
+        {% endfor %}
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+.nav-tabs .nav-link.active { color: var(--brand-orange) !important; border-bottom: 2px solid var(--brand-orange) !important; background: transparent !important; }
+.nav-tabs .nav-link { color: #64748B; border: none; }
+{% endblock %}

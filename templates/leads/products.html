@@ -1,0 +1,244 @@
+{% extends "base/base.html" %}
+
+{% block title %}Products — DialEasy CRM{% endblock %}
+{% block page_title %}Products Catalogue{% endblock %}
+{% block page_sub %}Manage products that agents link to leads{% endblock %}
+
+{% block topbar_action %}
+<button class="btn-crm-primary" data-bs-toggle="modal" data-bs-target="#addProductModal">
+  <i class="bi bi-plus-lg"></i> Add Product
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Stats -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-orange">
+      <div class="stat-label">Total Products</div>
+      <div class="stat-value">{{ products.count|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-green">
+      <div class="stat-label">Active</div>
+      <div class="stat-value">{{ active_count|default:0 }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Products Table -->
+<div class="crm-card">
+  <div class="crm-card-title d-flex justify-content-between">
+    <span><i class="bi bi-box-seam"></i> All Products</span>
+    <div class="topbar-search" style="width:220px;">
+      <i class="bi bi-search" style="font-size:13px;"></i>
+      <input type="text" placeholder="Search products…" id="product-search" style="border:none;outline:none;font-size:12px;background:transparent;width:100%;font-family:inherit;">
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="crm-table" id="products-table">
+      <thead>
+        <tr>
+          <th>Product Name</th>
+          <th>SKU</th>
+          <th>Unit</th>
+          <th>Price (₹)</th>
+          <th>Leads Linked</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in products %}
+        <tr>
+          <td>
+            <div style="font-weight:600;font-size:13px;">{{ product.name }}</div>
+            {% if product.description %}
+            <div style="font-size:11px;color:#94A3B8;margin-top:2px;">{{ product.description|truncatechars:60 }}</div>
+            {% endif %}
+          </td>
+          <td><code>{{ product.sku|default:"—" }}</code></td>
+          <td style="font-size:12px;color:#64748B;">{{ product.unit|default:"pcs" }}</td>
+          <td style="font-weight:700;color:var(--brand-green);">₹{{ product.price|floatformat:0 }}</td>
+          <td>
+            <span style="font-weight:700;">{{ product.lead_products.count }}</span>
+            <span style="font-size:11px;color:#94A3B8;"> leads</span>
+          </td>
+          <td>
+            <span class="badge-status {% if product.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+              {% if product.is_active %}Active{% else %}Inactive{% endif %}
+            </span>
+          </td>
+          <td>
+            <div class="d-flex gap-2">
+              <button class="icon-btn edit-btn" style="width:28px;height:28px;font-size:14px;color:var(--brand-orange);border-color:var(--brand-orange-mid);"
+                data-id="{{ product.id }}"
+                data-name="{{ product.name }}"
+                data-sku="{{ product.sku|default:'' }}"
+                data-unit="{{ product.unit|default:'' }}"
+                data-price="{{ product.price }}"
+                data-description="{{ product.description|default:'' }}"
+                data-active="{{ product.is_active|yesno:'true,false' }}"
+                title="Edit">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <form method="post" action="#" style="display:inline;" onsubmit="return confirm('Toggle product status?')">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="toggle_status">
+                <input type="hidden" name="product_id" value="{{ product.id }}">
+                <button type="submit" class="icon-btn" style="width:28px;height:28px;font-size:14px;color:#94A3B8;" title="Toggle">
+                  <i class="bi bi-toggle-{% if product.is_active %}on text-success{% else %}off{% endif %}"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="7" class="text-center py-5">
+            <i class="bi bi-box-seam" style="font-size:36px;color:#CBD5E1;display:block;margin-bottom:10px;"></i>
+            <span style="color:#94A3B8;font-size:14px;">No products yet.</span>
+            <br>
+            <button class="btn-crm-primary mt-3" data-bs-toggle="modal" data-bs-target="#addProductModal">
+              <i class="bi bi-plus-lg"></i> Add First Product
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add Product Modal -->
+<div class="modal fade" id="addProductModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-plus-circle text-orange me-2"></i>Add Product</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="#">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_product">
+        <div class="modal-body p-4">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Product Name *</label>
+              <input type="text" name="name" class="form-control" placeholder="e.g. Solar Panel 250W" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label">SKU / Code</label>
+              <input type="text" name="sku" class="form-control" placeholder="e.g. SP-250">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Unit</label>
+              <input type="text" name="unit" class="form-control" placeholder="e.g. pcs, kg, month">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Price (₹) *</label>
+              <input type="number" name="price" class="form-control" placeholder="0.00" min="0" step="0.01" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Status</label>
+              <select name="is_active" class="form-select">
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Description</label>
+              <textarea name="description" class="form-control" rows="2" placeholder="Optional product description"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-primary"><i class="bi bi-check-lg"></i> Add Product</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Product Modal -->
+<div class="modal fade" id="editProductModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-pencil text-orange me-2"></i>Edit Product</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="#">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="edit_product">
+        <input type="hidden" name="product_id" id="edit-product-id">
+        <div class="modal-body p-4">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Product Name *</label>
+              <input type="text" name="name" id="edit-name" class="form-control" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label">SKU</label>
+              <input type="text" name="sku" id="edit-sku" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Unit</label>
+              <input type="text" name="unit" id="edit-unit" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Price (₹) *</label>
+              <input type="number" name="price" id="edit-price" class="form-control" min="0" step="0.01">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Status</label>
+              <select name="is_active" id="edit-active" class="form-select">
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Description</label>
+              <textarea name="description" id="edit-description" class="form-control" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Populate edit modal
+document.querySelectorAll('.edit-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.getElementById('edit-product-id').value = btn.dataset.id;
+    document.getElementById('edit-name').value        = btn.dataset.name;
+    document.getElementById('edit-sku').value         = btn.dataset.sku;
+    document.getElementById('edit-unit').value        = btn.dataset.unit;
+    document.getElementById('edit-price').value       = btn.dataset.price;
+    document.getElementById('edit-description').value = btn.dataset.description;
+    document.getElementById('edit-active').value      = btn.dataset.active;
+    new bootstrap.Modal(document.getElementById('editProductModal')).show();
+  });
+});
+
+// Live table search
+document.getElementById('product-search')?.addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#products-table tbody tr').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+</script>
+{% endblock %}

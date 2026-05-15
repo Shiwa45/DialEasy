@@ -1,0 +1,205 @@
+{% extends "base/base.html" %}
+
+{% block title %}Import Leads — DialEasy CRM{% endblock %}
+{% block page_title %}Import Leads{% endblock %}
+{% block page_sub %}Upload CSV or Excel files to bulk-import leads{% endblock %}
+
+{% block topbar_action %}
+<a href="{% url 'leads:download_sample_csv' %}" class="btn-crm-outline">
+  <i class="bi bi-file-earmark-arrow-down"></i> Download Sample CSV
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  <!-- ── Upload Form ── -->
+  <div class="col-md-6">
+    <div class="crm-card">
+      <div class="crm-card-title"><i class="bi bi-cloud-upload"></i> Upload File</div>
+
+      <form method="post" enctype="multipart/form-data" id="upload-form">
+        {% csrf_token %}
+
+        <!-- Drop Zone -->
+        <div id="drop-zone" style="
+          border: 2px dashed var(--brand-orange-mid);
+          border-radius: 12px;
+          padding: 32px 20px;
+          text-align: center;
+          background: var(--brand-orange-light);
+          cursor: pointer;
+          margin-bottom: 16px;
+          transition: border-color 0.2s, background 0.2s;
+        ">
+          <i class="bi bi-file-earmark-spreadsheet" style="font-size:36px;color:var(--brand-orange);display:block;margin-bottom:10px;"></i>
+          <div style="font-size:14px;font-weight:700;color:#0F172A;margin-bottom:4px;">
+            Drag & drop your file here
+          </div>
+          <div style="font-size:12px;color:#64748B;margin-bottom:12px;">
+            CSV or Excel (.xlsx, .xls) · Max 10 MB
+          </div>
+          <label for="lead_file" class="btn-crm-primary" style="cursor:pointer;">
+            <i class="bi bi-folder2-open"></i> Browse File
+          </label>
+          <input type="file" id="lead_file" name="lead_file" accept=".csv,.xlsx,.xls" hidden required>
+        </div>
+
+        <!-- File name preview -->
+        <div id="file-preview" style="display:none;background:#F0FDF4;border:1px solid var(--brand-green-mid);border-radius:9px;padding:10px 14px;margin-bottom:16px;">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-file-earmark-check" style="color:var(--brand-green);font-size:18px;"></i>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:600;" id="file-name"></div>
+              <div style="font-size:11px;color:#64748B;" id="file-size"></div>
+            </div>
+            <button type="button" onclick="clearFile()" style="background:none;border:none;color:#94A3B8;cursor:pointer;font-size:16px;">
+              <i class="bi bi-x-circle"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Assign To Agent</label>
+          <select name="agent_id" class="form-select">
+            <option value="">Auto-assign (round robin)</option>
+            {% for agent in agents %}
+            <option value="{{ agent.id }}">{{ agent.get_full_name|default:agent.username }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text" style="font-size:11px;color:#94A3B8;">Leave blank to distribute equally among active agents.</div>
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label">Duplicate Handling</label>
+          <select name="duplicate_handling" class="form-select">
+            <option value="skip">Skip duplicates (recommended)</option>
+            <option value="update">Update existing records</option>
+            <option value="import_all">Import all (allow duplicates)</option>
+          </select>
+        </div>
+
+        <button type="submit" class="btn-crm-primary w-100 justify-content-center" id="submit-btn">
+          <i class="bi bi-upload"></i> Import Leads
+        </button>
+      </form>
+    </div>
+
+    <!-- Instructions -->
+    <div class="crm-card mt-3">
+      <div class="crm-card-title"><i class="bi bi-info-circle"></i> CSV Format Guide</div>
+      <div style="font-size:13px;color:#475569;line-height:1.7;">
+        <p class="mb-2">Your CSV must have these columns (case-insensitive):</p>
+        <div class="table-responsive">
+          <table class="crm-table">
+            <thead><tr><th>Column</th><th>Required</th><th>Example</th></tr></thead>
+            <tbody>
+              <tr><td><code>name</code></td><td><span class="badge-status badge-converted">Yes</span></td><td>Rajesh Kumar</td></tr>
+              <tr><td><code>phone</code></td><td><span class="badge-status badge-converted">Yes</span></td><td>9876543210</td></tr>
+              <tr><td><code>email</code></td><td><span class="badge-status badge-inactive">No</span></td><td>raj@example.com</td></tr>
+              <tr><td><code>company</code></td><td><span class="badge-status badge-inactive">No</span></td><td>Acme Corp</td></tr>
+              <tr><td><code>source</code></td><td><span class="badge-status badge-inactive">No</span></td><td>IndiaMart</td></tr>
+              <tr><td><code>notes</code></td><td><span class="badge-status badge-inactive">No</span></td><td>Interested in solar</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Import History ── -->
+  <div class="col-md-6">
+    <div class="crm-card">
+      <div class="crm-card-title"><i class="bi bi-clock-history"></i> Import History</div>
+      <div class="table-responsive">
+        <table class="crm-table">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Total</th>
+              <th>Success</th>
+              <th>Failed</th>
+              <th>Status</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for upload in recent_uploads %}
+            <tr>
+              <td style="max-width:140px;">
+                <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                  {{ upload.file.name|truncatechars:25 }}
+                </div>
+                <div style="font-size:11px;color:#94A3B8;">by {{ upload.uploaded_by.get_full_name|default:upload.uploaded_by.username }}</div>
+              </td>
+              <td style="font-weight:700;">{{ upload.total_records|default:"—" }}</td>
+              <td style="color:var(--brand-green);font-weight:700;">{{ upload.processed_records|default:"—" }}</td>
+              <td style="color:#EF4444;font-weight:700;">{{ upload.failed_records|default:"0" }}</td>
+              <td>
+                <span class="badge-status badge-{{ upload.status }}">
+                  {% if upload.status == 'completed' %}Done
+                  {% elif upload.status == 'processing' %}Processing
+                  {% else %}Failed{% endif %}
+                </span>
+              </td>
+              <td style="font-size:11px;color:#64748B;">{{ upload.created_at|date:"d M Y" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="text-center py-4" style="color:#94A3B8;font-size:13px;">
+                No imports yet.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('lead_file');
+const preview  = document.getElementById('file-preview');
+const fileName = document.getElementById('file-name');
+const fileSize = document.getElementById('file-size');
+
+function showPreview(file) {
+  fileName.textContent = file.name;
+  fileSize.textContent = (file.size / 1024).toFixed(1) + ' KB';
+  preview.style.display = 'block';
+  dropZone.style.borderColor = 'var(--brand-green)';
+}
+
+function clearFile() {
+  fileInput.value = '';
+  preview.style.display = 'none';
+  dropZone.style.borderColor = 'var(--brand-orange-mid)';
+}
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) showPreview(fileInput.files[0]);
+});
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.background = '#FFF0E6'; });
+dropZone.addEventListener('dragleave', ()  => { dropZone.style.background = 'var(--brand-orange-light)'; });
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.style.background = 'var(--brand-orange-light)';
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    fileInput.files = files;
+    showPreview(files[0]);
+  }
+});
+
+document.getElementById('upload-form').addEventListener('submit', () => {
+  const btn = document.getElementById('submit-btn');
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Importing…';
+  btn.disabled = true;
+});
+</script>
+{% endblock %}

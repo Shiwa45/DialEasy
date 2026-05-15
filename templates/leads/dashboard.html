@@ -1,0 +1,191 @@
+{% extends "base/base.html" %}
+
+{% block title %}Dashboard — DialEasy CRM{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_sub %}Welcome back, {{ request.user.get_full_name|default:request.user.username }}{% endblock %}
+
+{% block topbar_action %}
+<a href="{% url 'leads:lead_list' %}" class="btn-crm-primary">
+  <i class="bi bi-plus-lg"></i> Add Lead
+</a>
+{% endblock %}
+
+{% block content %}
+<!-- ── Stat Cards ── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-orange">
+      <div class="stat-label">Total Leads</div>
+      <div class="stat-value">{{ total_leads|default:0 }}</div>
+      <div class="stat-delta text-success"><i class="bi bi-arrow-up-short"></i> Updated today</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-green">
+      <div class="stat-label">Converted</div>
+      <div class="stat-value">{{ converted_leads|default:0 }}</div>
+      <div class="stat-delta text-success">
+        <i class="bi bi-arrow-up-short"></i>
+        {% if total_leads %}{{ converted_leads|floatformat:0 }}/{{ total_leads }} leads{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-blue">
+      <div class="stat-label">Today's Calls</div>
+      <div class="stat-value">{{ today_calls|default:0 }}</div>
+      <div class="stat-delta text-muted"><i class="bi bi-telephone"></i> Active agents</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-purple">
+      <div class="stat-label">Follow-ups Due</div>
+      <div class="stat-value">{{ today_follow_ups|default:0 }}</div>
+      {% if overdue_follow_ups %}
+      <div class="stat-delta text-danger"><i class="bi bi-exclamation-triangle"></i> {{ overdue_follow_ups }} overdue</div>
+      {% else %}
+      <div class="stat-delta text-success"><i class="bi bi-check-circle"></i> None overdue</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Second Row: Funnel + Recent Leads ── -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="crm-card h-100">
+      <div class="crm-card-title"><i class="bi bi-filter"></i> Lead Funnel</div>
+      {% for item in status_distribution %}
+      {% with max_count=total_leads|default:1 %}
+      <div class="mb-3">
+        <div class="d-flex justify-content-between mb-1">
+          <span style="font-size:12px;font-weight:600;text-transform:capitalize;">{{ item.status }}</span>
+          <span style="font-size:12px;font-weight:700;">{{ item.count }}</span>
+        </div>
+        <div class="crm-progress">
+          <div class="crm-progress-fill
+            {% if item.status == 'converted' %}crm-progress-green
+            {% elif item.status == 'new' %}crm-progress-orange
+            {% else %}crm-progress-blue{% endif %}"
+            style="width: {% widthratio item.count total_leads 100 %}%;">
+          </div>
+        </div>
+      </div>
+      {% endwith %}
+      {% empty %}
+      <p class="text-muted" style="font-size:13px;">No lead data yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="col-md-8">
+    <div class="crm-card h-100">
+      <div class="crm-card-title d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-clock-history"></i> Recent Leads</span>
+        <a href="{% url 'leads:lead_list' %}" class="btn-crm-outline" style="font-size:11px;padding:4px 10px;">View All</a>
+      </div>
+      <div class="table-responsive">
+        <table class="crm-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Agent</th>
+              <th>Status</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for lead in recent_leads %}
+            <tr>
+              <td>
+                <a href="{% url 'leads:lead_detail' lead.id %}" style="font-weight:600;color:#0F172A;text-decoration:none;">
+                  {{ lead.name }}
+                </a>
+                {% if lead.company %}<br><span style="font-size:11px;color:#94A3B8;">{{ lead.company }}</span>{% endif %}
+              </td>
+              <td style="font-size:12px;">{{ lead.phone }}</td>
+              <td>
+                {% if lead.assigned_agent %}
+                  <span style="font-size:12px;">{{ lead.assigned_agent.get_full_name|default:lead.assigned_agent.username }}</span>
+                {% else %}
+                  <span style="font-size:11px;color:#94A3B8;">Unassigned</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge-status badge-{{ lead.status }}">{{ lead.get_status_display }}</span>
+              </td>
+              <td style="font-size:11px;color:#64748B;">{{ lead.created_at|date:"d M" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-center text-muted py-3" style="font-size:13px;">No leads yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Third Row: Top Agents + Recent Calls ── -->
+<div class="row g-3">
+  <div class="col-md-5">
+    <div class="crm-card h-100">
+      <div class="crm-card-title"><i class="bi bi-trophy"></i> Top Agents Today</div>
+      {% for agent in top_agents %}
+      <div class="d-flex align-items-center gap-3 mb-3">
+        <div class="agent-av" style="background:
+          {% cycle '#F97316' '#3B82F6' '#8B5CF6' '#16A34A' '#0D9488' %};">
+          {{ agent.first_name|first|default:agent.username|first|upper }}{{ agent.last_name|first|upper }}
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;">{{ agent.get_full_name|default:agent.username }}</div>
+          <div style="font-size:11px;color:#64748B;">{{ agent.call_count }} calls today</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:13px;font-weight:700;" class="text-green">
+            {% with conv=agent.assigned_leads.filter %}—{% endwith %}
+          </div>
+        </div>
+      </div>
+      {% empty %}
+      <p class="text-muted" style="font-size:13px;">No calls logged today.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="col-md-7">
+    <div class="crm-card h-100">
+      <div class="crm-card-title d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-telephone-inbound"></i> Recent Calls</span>
+      </div>
+      <div class="table-responsive">
+        <table class="crm-table">
+          <thead>
+            <tr><th>Lead</th><th>Agent</th><th>Disposition</th><th>Duration</th><th>Time</th></tr>
+          </thead>
+          <tbody>
+            {% for call in recent_calls %}
+            <tr>
+              <td>
+                <a href="{% url 'leads:lead_detail' call.lead.id %}" style="font-weight:600;color:#0F172A;text-decoration:none;">
+                  {{ call.lead.name }}
+                </a>
+              </td>
+              <td style="font-size:12px;">{{ call.agent.get_full_name|default:call.agent.username }}</td>
+              <td><span class="badge-status badge-contacted">{{ call.get_disposition_display }}</span></td>
+              <td style="font-size:12px;">
+                {% if call.duration %}{{ call.duration }}s{% else %}—{% endif %}
+              </td>
+              <td style="font-size:11px;color:#64748B;">{{ call.call_date|timesince }} ago</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-center text-muted py-3" style="font-size:13px;">No calls today.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

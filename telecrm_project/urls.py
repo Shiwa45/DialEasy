@@ -11,8 +11,27 @@ from django.conf.urls.static import static
 from django.shortcuts import redirect
 from django.contrib.auth import views as auth_views
 from tenants.api_views import tenant_features_view, tenant_info_view
+from tenants.models import Domain
+
+def super_admin_redirect(request):
+    try:
+        public_domain = Domain.objects.get(tenant__schema_name='public').domain
+        host = request.get_host()
+        if ':' in host and ':' not in public_domain:
+            port = host.split(':')[1]
+            public_domain = f"{public_domain}:{port}"
+        return redirect(f"{request.scheme}://{public_domain}/admin/")
+    except Exception:
+        return redirect('/admin/')
+
+super_admin_patterns = ([
+    path('', super_admin_redirect, name='index'),
+], 'super_admin')
 
 urlpatterns = [
+    # Super Admin Redirect (resolves 'super_admin:index' from tenant templates)
+    path('__super_admin/', include(super_admin_patterns)),
+
     # Tenant-level Django admin (manages agents, leads within this tenant)
     path('admin/', admin.site.urls),
 
@@ -22,6 +41,7 @@ urlpatterns = [
     # CRM apps
     path('leads/', include('leads.urls')),
     path('agents/', include('agents.urls')),
+    path('reports/', include('reports.urls_mvt')),
 
     # REST API (consumed by Flutter app)
     path('api/', include('api.urls')),

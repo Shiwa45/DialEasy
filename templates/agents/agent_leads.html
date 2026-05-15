@@ -1,0 +1,94 @@
+{% extends "base/base.html" %}
+
+{% block title %}My Leads — DialEasy CRM{% endblock %}
+{% block page_title %}My Leads{% endblock %}
+{% block page_sub %}Leads assigned to you{% endblock %}
+
+{% block content %}
+<div class="crm-card mb-3">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-md-5">
+      <label class="form-label">Search</label>
+      <input type="text" name="search" class="form-control" placeholder="Name, phone…" value="{{ search_query|default:'' }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Status</label>
+      <select name="status" class="form-select">
+        <option value="">All Statuses</option>
+        {% for val, label in status_choices %}
+        <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <button type="submit" class="btn-crm-primary me-2"><i class="bi bi-funnel"></i> Filter</button>
+      <a href="{% url 'agents:agent_leads' %}" class="btn-crm-outline"><i class="bi bi-x"></i> Clear</a>
+    </div>
+  </form>
+</div>
+
+<div class="crm-card">
+  <div class="table-responsive">
+    <table class="crm-table">
+      <thead>
+        <tr>
+          <th>Lead</th><th>Phone</th><th>Status</th><th>Last Call</th><th>Follow-up</th><th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lead in page_obj %}
+        <tr>
+          <td>
+            <a href="{% url 'leads:lead_detail' lead.id %}" style="font-weight:600;color:#0F172A;text-decoration:none;">{{ lead.name }}</a>
+            {% if lead.company %}<br><span style="font-size:11px;color:#94A3B8;">{{ lead.company }}</span>{% endif %}
+          </td>
+          <td style="font-size:12px;">{{ lead.phone }}</td>
+          <td><span class="badge-status badge-{{ lead.status }}">{{ lead.get_status_display }}</span></td>
+          <td style="font-size:12px;color:#64748B;">
+            {% with last_call=lead.call_logs.last %}
+            {% if last_call %}{{ last_call.call_date|date:"d M" }}{% else %}—{% endif %}
+            {% endwith %}
+          </td>
+          <td style="font-size:12px;color:#64748B;">
+            {% with next_fu=lead.follow_ups.filter %}—{% endwith %}
+          </td>
+          <td>
+            <a href="{% url 'leads:lead_detail' lead.id %}" class="btn-crm-primary" style="font-size:11px;padding:5px 10px;">
+              <i class="bi bi-telephone-plus"></i> Log Call
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="text-center py-5">
+            <span style="color:#94A3B8;font-size:14px;">No leads assigned to you yet.</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.has_other_pages %}
+  <div class="d-flex justify-content-center mt-4">
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+          {% if page_obj.number == num %}
+          <li class="page-item active"><span class="page-link" style="background:var(--brand-orange);border-color:var(--brand-orange);">{{ num }}</span></li>
+          {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+          <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+          {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

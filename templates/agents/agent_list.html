@@ -1,0 +1,174 @@
+{% extends "base/base.html" %}
+
+{% block title %}Agents — DialEasy CRM{% endblock %}
+{% block page_title %}Agent Management{% endblock %}
+{% block page_sub %}Manage agents, roles, targets and performance{% endblock %}
+
+{% block topbar_action %}
+<a href="{% url 'agents:create_agent' %}" class="btn-crm-primary">
+  <i class="bi bi-person-plus"></i> Add Agent
+</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Summary Stats ── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-orange">
+      <div class="stat-label">Total Agents</div>
+      <div class="stat-value">{{ total_agents|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-blue">
+      <div class="stat-label">Leads Assigned</div>
+      <div class="stat-value">{{ total_leads_assigned|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-green">
+      <div class="stat-label">Total Conversions</div>
+      <div class="stat-value">{{ total_conversions|default:0 }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-purple">
+      <div class="stat-label">Avg Conv. Rate</div>
+      <div class="stat-value">{{ avg_conversion_rate|default:0 }}%</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Agent Table ── -->
+<div class="crm-card">
+  <div class="crm-card-title d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-people"></i> All Agents</span>
+    <div class="d-flex gap-2">
+      <a href="{% url 'agents:agent_activity_list' %}" class="btn-crm-outline" style="font-size:12px;">
+        <i class="bi bi-broadcast"></i> Live Monitor
+      </a>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="crm-table">
+      <thead>
+        <tr>
+          <th>Agent</th>
+          <th>Role</th>
+          <th>Leads</th>
+          <th>Total Calls</th>
+          <th>Converted</th>
+          <th>Conv. Rate</th>
+          <th>Today Calls</th>
+          <th>Follow-ups</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for agent in page_obj %}
+        <tr>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <div class="agent-av" style="background:{% cycle '#F97316' '#3B82F6' '#8B5CF6' '#16A34A' '#0D9488' '#DC2626' '#CA8A04' %};">
+                {{ agent.first_name|first|default:agent.username|first|upper }}{{ agent.last_name|first|upper }}
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:600;">{{ agent.get_full_name|default:agent.username }}</div>
+                <div style="font-size:11px;color:#94A3B8;">{{ agent.email }}</div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="badge-status
+              {% if agent.agent_profile.role == 'admin' %}badge-converted
+              {% elif agent.agent_profile.role == 'manager' %}badge-callback
+              {% else %}badge-new{% endif %}">
+              {{ agent.agent_profile.get_role_display|default:"Agent" }}
+            </span>
+          </td>
+          <td style="font-weight:700;">{{ agent.total_leads }}</td>
+          <td>{{ agent.total_calls }}</td>
+          <td style="color:var(--brand-green);font-weight:700;">{{ agent.converted_leads }}</td>
+          <td>
+            <span style="font-weight:800;
+              {% if agent.conversion_rate >= 15 %}color:var(--brand-green);
+              {% elif agent.conversion_rate >= 8 %}color:var(--brand-orange);
+              {% else %}color:#EF4444;{% endif %}">
+              {{ agent.conversion_rate }}%
+            </span>
+          </td>
+          <td>{{ agent.today_calls }}</td>
+          <td>
+            <span style="color:{% if agent.pending_follow_ups > 5 %}#EF4444{% else %}#64748B{% endif %};">
+              {{ agent.pending_follow_ups }}
+            </span>
+          </td>
+          <td>
+            <div class="d-flex gap-2">
+              <a href="{% url 'agents:agent_detail' agent.id %}" class="icon-btn" title="View" style="width:28px;height:28px;font-size:14px;">
+                <i class="bi bi-eye"></i>
+              </a>
+              <a href="{% url 'agents:agent_performance' agent.id %}" class="icon-btn" title="Performance" style="width:28px;height:28px;font-size:14px;color:#3B82F6;border-color:#BFDBFE;">
+                <i class="bi bi-graph-up"></i>
+              </a>
+              <a href="{% url 'agents:update_agent' agent.id %}" class="icon-btn" title="Edit" style="width:28px;height:28px;font-size:14px;color:var(--brand-orange);border-color:var(--brand-orange-mid);">
+                <i class="bi bi-pencil"></i>
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="9" class="text-center py-5">
+            <i class="bi bi-people" style="font-size:36px;color:#CBD5E1;display:block;margin-bottom:8px;"></i>
+            <span style="color:#94A3B8;font-size:14px;">No agents yet.</span>
+            <br>
+            <a href="{% url 'agents:create_agent' %}" class="btn-crm-primary mt-3 d-inline-flex">
+              <i class="bi bi-person-plus"></i> Add First Agent
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  {% if page_obj.has_other_pages %}
+  <div class="d-flex justify-content-between align-items-center mt-4">
+    <span style="font-size:13px;color:#64748B;">
+      Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }} agents
+    </span>
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
+            <i class="bi bi-chevron-left"></i>
+          </a>
+        </li>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+          {% if page_obj.number == num %}
+          <li class="page-item active">
+            <span class="page-link" style="background:var(--brand-orange);border-color:var(--brand-orange);">{{ num }}</span>
+          </li>
+          {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+          <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+          {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ page_obj.next_page_number }}">
+            <i class="bi bi-chevron-right"></i>
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

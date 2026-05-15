@@ -1,0 +1,211 @@
+{% extends "base/base.html" %}
+
+{% block title %}Call Recordings — DialEasy CRM{% endblock %}
+{% block page_title %}Call Recordings{% endblock %}
+{% block page_sub %}Listen, review and manage recorded calls{% endblock %}
+
+{% block content %}
+
+<!-- Filters -->
+<div class="crm-card mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-md-2">
+      <label class="form-label">From</label>
+      <input type="date" name="start" class="form-control" value="{{ start_date|date:'Y-m-d'|default:'' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">To</label>
+      <input type="date" name="end" class="form-control" value="{{ end_date|date:'Y-m-d'|default:'' }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Agent</label>
+      <select name="agent" class="form-select">
+        <option value="">All Agents</option>
+        {% for agent in agents %}
+        <option value="{{ agent.id }}" {% if selected_agent == agent.id|stringformat:"s" %}selected{% endif %}>{{ agent.get_full_name|default:agent.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Disposition</label>
+      <select name="disposition" class="form-select">
+        <option value="">All</option>
+        <option value="interested">Interested</option>
+        <option value="not_interested">Not Interested</option>
+        <option value="callback">Callback</option>
+        <option value="converted">Converted</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn-crm-primary w-100"><i class="bi bi-funnel"></i> Filter</button>
+    </div>
+    <div class="col-auto">
+      <a href="?" class="btn-crm-outline"><i class="bi bi-x"></i> Clear</a>
+    </div>
+  </form>
+</div>
+
+<!-- Quick Filter Pills -->
+<div class="d-flex gap-2 flex-wrap mb-3">
+  <a href="?" class="filter-chip {% if not request.GET.has_transcript %}active{% endif %}">All Recordings</a>
+  <a href="?has_transcript=1" class="filter-chip">AI Transcribed</a>
+  <a href="?sentiment=positive" class="filter-chip">Positive Sentiment</a>
+  <a href="?sentiment=negative" class="filter-chip">Needs Attention</a>
+</div>
+
+<!-- Recordings List -->
+<div class="crm-card">
+  <div class="crm-card-title d-flex justify-content-between">
+    <span><i class="bi bi-mic"></i> Recordings</span>
+    <span style="font-size:12px;color:#64748B;font-weight:400;">{{ recordings|length }} recordings found</span>
+  </div>
+
+  {% for call in recordings %}
+  <div style="border:1px solid var(--border-color);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:#fff;transition:border-color 0.15s;"
+       onmouseenter="this.style.borderColor='var(--brand-orange)'" onmouseleave="this.style.borderColor='var(--border-color)'">
+
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <!-- Play Button -->
+      <button class="play-btn" onclick="togglePlay(this, '{{ call.recording.url }}')"
+        style="width:40px;height:40px;border-radius:50%;background:var(--brand-orange);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:16px;flex-shrink:0;">
+        <i class="bi bi-play-fill"></i>
+      </button>
+
+      <!-- Info -->
+      <div style="flex:1;min-width:0;">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <a href="{% url 'leads:lead_detail' call.lead.id %}" style="font-size:13px;font-weight:700;color:#0F172A;text-decoration:none;">{{ call.lead.name }}</a>
+          <span style="font-size:12px;color:#94A3B8;">{{ call.lead.phone }}</span>
+          <span class="badge-status badge-contacted">{{ call.get_disposition_display }}</span>
+          {% if call.duration %}<span style="font-size:11px;color:#94A3B8;"><i class="bi bi-clock"></i> {{ call.duration }}s</span>{% endif %}
+        </div>
+        <div style="font-size:12px;color:#64748B;margin-top:3px;">
+          by {{ call.agent.get_full_name|default:call.agent.username }} · {{ call.call_date|date:"d M Y, g:i A" }}
+        </div>
+
+        <!-- Waveform placeholder -->
+        <div style="display:flex;align-items:center;gap:2px;margin-top:8px;height:24px;" class="waveform-bars">
+          {% for i in "12345678901234567890" %}
+          <div style="width:3px;background:{% cycle 'var(--brand-orange-mid)' '#FDBA74' 'var(--brand-orange)' '#FB923C' %};border-radius:2px;height:{% cycle '40' '80' '60' '100' '50' '90' '70' '45' '85' '55' %}%;opacity:0.7;"></div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Right Actions -->
+      <div class="d-flex flex-column gap-2 align-items-end" style="flex-shrink:0;">
+        <!-- Sentiment Badge -->
+        {% if call.transcript %}
+          {% if call.transcript.sentiment.overall_sentiment == 'positive' %}
+          <span class="badge-status badge-converted"><i class="bi bi-emoji-smile"></i> Positive</span>
+          {% elif call.transcript.sentiment.overall_sentiment == 'negative' %}
+          <span class="badge-status badge-lost"><i class="bi bi-emoji-frown"></i> Negative</span>
+          {% else %}
+          <span class="badge-status badge-inactive">Neutral</span>
+          {% endif %}
+        {% else %}
+        <span class="badge-status badge-inactive" style="font-size:10px;">No Transcript</span>
+        {% endif %}
+
+        <div class="d-flex gap-1">
+          <!-- Transcript Button -->
+          {% if call.transcript %}
+          <button class="icon-btn transcript-btn" style="width:28px;height:28px;font-size:14px;color:#3B82F6;border-color:#BFDBFE;"
+            data-id="{{ call.id }}"
+            data-name="{{ call.lead.name }}"
+            data-summary="{{ call.transcript.summary|default:'No summary available.' }}"
+            title="View Transcript">
+            <i class="bi bi-file-text"></i>
+          </button>
+          {% endif %}
+
+          <!-- Download -->
+          <a href="{{ call.recording.url }}" download class="icon-btn" style="width:28px;height:28px;font-size:14px;" title="Download">
+            <i class="bi bi-download"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden Audio Player -->
+    <audio class="audio-player" style="display:none;width:100%;margin-top:10px;" controls>
+      <source src="{{ call.recording.url }}">
+    </audio>
+
+    <!-- Transcript Preview -->
+    {% if call.transcript and call.transcript.summary %}
+    <div class="transcript-preview" id="transcript-{{ call.id }}" style="display:none;margin-top:12px;background:#F8FAFC;border-radius:9px;padding:12px;border-left:3px solid #3B82F6;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#94A3B8;margin-bottom:6px;">AI Summary</div>
+      <p style="font-size:13px;line-height:1.7;color:#475569;margin:0;">{{ call.transcript.summary }}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% empty %}
+  <div class="text-center py-5">
+    <i class="bi bi-mic-mute" style="font-size:40px;color:#CBD5E1;display:block;margin-bottom:10px;"></i>
+    <div style="font-size:15px;font-weight:700;color:#94A3B8;">No call recordings found</div>
+    <p style="color:#CBD5E1;font-size:13px;">Recordings appear here after agents log calls with recordings attached.</p>
+  </div>
+  {% endfor %}
+
+  <!-- Pagination -->
+  {% if page_obj.has_other_pages %}
+  <div class="d-flex justify-content-center mt-4">
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}"><i class="bi bi-chevron-left"></i></a></li>{% endif %}
+        {% for num in page_obj.paginator.page_range %}
+          {% if page_obj.number == num %}
+          <li class="page-item active"><span class="page-link" style="background:var(--brand-orange);border-color:var(--brand-orange);">{{ num }}</span></li>
+          {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+          <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+          {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}"><i class="bi bi-chevron-right"></i></a></li>{% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentAudio = null;
+let currentBtn   = null;
+
+function togglePlay(btn, url) {
+  const card  = btn.closest('div[style*="border-radius:12px"]');
+  const audio = card.querySelector('.audio-player');
+
+  if (currentAudio && currentAudio !== audio) {
+    currentAudio.pause();
+    currentBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
+    currentAudio.style.display = 'none';
+  }
+
+  if (audio.style.display === 'none') {
+    audio.src = url;
+    audio.style.display = 'block';
+    audio.play();
+    btn.innerHTML = '<i class="bi bi-pause-fill"></i>';
+    currentAudio = audio;
+    currentBtn = btn;
+  } else if (audio.paused) {
+    audio.play();
+    btn.innerHTML = '<i class="bi bi-pause-fill"></i>';
+  } else {
+    audio.pause();
+    btn.innerHTML = '<i class="bi bi-play-fill"></i>';
+  }
+}
+
+// Toggle transcript preview
+document.querySelectorAll('.transcript-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset.id;
+    const div = document.getElementById('transcript-' + id);
+    if (div) div.style.display = div.style.display === 'none' ? 'block' : 'none';
+  });
+});
+</script>
+{% endblock %}

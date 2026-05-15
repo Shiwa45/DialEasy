@@ -1,0 +1,38 @@
+{% extends "base/base.html" %}
+
+{% block title %}Feature Unavailable — DialEasy CRM{% endblock %}
+{% block page_title %}Feature Unavailable{% endblock %}
+{% block page_sub %}Upgrade your plan to access this feature{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="crm-card text-center" style="padding:48px 32px;">
+      <div style="width:72px;height:72px;background:#FFF7ED;border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px;">
+        <i class="bi bi-lock" style="color:var(--brand-orange);"></i>
+      </div>
+      <div style="font-size:20px;font-weight:800;margin-bottom:8px;">
+        {{ feature_name }} is not available
+      </div>
+      <p style="font-size:14px;color:#64748B;line-height:1.7;margin-bottom:24px;">
+        Your current plan does not include <strong>{{ feature_name }}</strong>.
+        Upgrade your subscription to unlock this feature and many more.
+      </p>
+      <div style="background:#F8FAFC;border-radius:12px;padding:16px;margin-bottom:24px;text-align:left;">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#94A3B8;margin-bottom:8px;">Feature slug</div>
+        <code style="font-size:13px;">{{ feature_slug }}</code>
+      </div>
+      <div class="d-flex gap-3 justify-content-center">
+        <a href="javascript:history.back()" class="btn-crm-outline">
+          <i class="bi bi-arrow-left"></i> Go Back
+        </a>
+        {% if request.user.is_superuser %}
+        <a href="{% url 'super_admin:tenants_plan_changelist' %}" class="btn-crm-primary">
+          <i class="bi bi-rocket-takeoff"></i> Manage Plans
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

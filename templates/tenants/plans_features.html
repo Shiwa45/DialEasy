@@ -1,0 +1,265 @@
+{% extends "base/base.html" %}
+
+{% block title %}Plans & Features — Super Admin{% endblock %}
+{% block page_title %}Plans & Features{% endblock %}
+{% block page_sub %}Super Admin · Manage subscription plans and feature gates{% endblock %}
+
+{% block topbar_action %}
+<div class="d-flex gap-2">
+  <button class="btn-crm-outline" data-bs-toggle="modal" data-bs-target="#addFeatureModal">
+    <i class="bi bi-lightning-charge"></i> Add Feature
+  </button>
+  <button class="btn-crm-primary" data-bs-toggle="modal" data-bs-target="#addPlanModal">
+    <i class="bi bi-plus-lg"></i> Add Plan
+  </button>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Plan Cards -->
+<div class="row g-3 mb-5" id="plans-grid">
+  {% for plan in plans %}
+  <div class="col-md-3">
+    <div class="crm-card h-100" style="{% if plan.is_public %}border-top:3px solid var(--brand-orange);{% else %}border-top:3px solid #8B5CF6;{% endif %}">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div>
+          {% if not plan.is_public %}<span style="font-size:10px;background:#EDE9FE;color:#6D28D9;border-radius:10px;padding:2px 8px;font-weight:700;">Private</span>{% endif %}
+          <div style="font-size:14px;font-weight:800;margin-top:4px;">{{ plan.name }}</div>
+        </div>
+        <div class="d-flex gap-1">
+          <a href="{% url 'super_admin:tenants_plan_change' plan.id %}" class="icon-btn" style="width:26px;height:26px;font-size:12px;color:var(--brand-orange);" title="Edit"><i class="bi bi-pencil"></i></a>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <span style="font-size:22px;font-weight:800;color:#0F172A;">₹{{ plan.price_monthly|floatformat:0 }}</span>
+        <span style="font-size:12px;color:#94A3B8;">/mo</span>
+        {% if plan.price_annual %}
+        <div style="font-size:11px;color:var(--brand-green);">₹{{ plan.price_annual|floatformat:0 }}/yr (save {{ plan.annual_saving_pct|default:0 }}%)</div>
+        {% endif %}
+      </div>
+
+      <div style="font-size:12px;color:#64748B;margin-bottom:12px;">
+        <div class="d-flex justify-content-between mb-1">
+          <span>Max Agents</span>
+          <strong>{% if plan.max_agents == -1 %}Unlimited{% else %}{{ plan.max_agents }}{% endif %}</strong>
+        </div>
+        <div class="d-flex justify-content-between mb-1">
+          <span>Max Leads</span>
+          <strong>{% if plan.max_leads == -1 %}Unlimited{% else %}{{ plan.max_leads }}{% endif %}</strong>
+        </div>
+        <div class="d-flex justify-content-between">
+          <span>Active Tenants</span>
+          <strong style="color:var(--brand-green);">{{ plan.subscriptions.filter.count|default:0 }}</strong>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:#94A3B8;margin-bottom:8px;">Features</div>
+      {% for feature in plan.features.all %}
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;">
+        <i class="bi bi-check-circle-fill" style="color:var(--brand-green);font-size:12px;flex-shrink:0;"></i>
+        {{ feature.name }}
+      </div>
+      {% endfor %}
+      {% if not plan.features.exists %}
+      <div style="color:#CBD5E1;font-size:12px;font-style:italic;">No features assigned.</div>
+      {% endif %}
+    </div>
+  </div>
+  {% empty %}
+  <div class="col-12 text-center py-4">
+    <span style="color:#94A3B8;">No plans created yet.</span>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Feature Matrix -->
+<div class="crm-card">
+  <div class="crm-card-title d-flex justify-content-between">
+    <span><i class="bi bi-grid-3x3"></i> Feature × Plan Matrix</span>
+    <span style="font-size:12px;color:#94A3B8;font-weight:400;">✅ = included in plan</span>
+  </div>
+  <div class="table-responsive">
+    <table class="crm-table">
+      <thead>
+        <tr>
+          <th style="width:200px;">Feature</th>
+          <th style="width:100px;">Slug</th>
+          {% for plan in plans %}
+          <th style="text-align:center;min-width:100px;">{{ plan.name }}</th>
+          {% endfor %}
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for feature in features %}
+        <tr>
+          <td>
+            <div style="font-weight:600;font-size:13px;">{{ feature.name }}</div>
+            {% if feature.description %}<div style="font-size:11px;color:#94A3B8;">{{ feature.description|truncatechars:50 }}</div>{% endif %}
+          </td>
+          <td><code>{{ feature.slug }}</code></td>
+          {% for plan in plans %}
+          <td style="text-align:center;">
+            {% if feature in plan.features.all %}
+            <span style="color:var(--brand-green);font-size:16px;">✅</span>
+            {% else %}
+            <span style="color:#CBD5E1;font-size:16px;">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td>
+            <span class="badge-status {% if feature.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+              {% if feature.is_active %}Active{% else %}Inactive{% endif %}
+            </span>
+          </td>
+          <td>
+            <a href="{% url 'super_admin:tenants_feature_change' feature.id %}" class="icon-btn" style="width:26px;height:26px;font-size:12px;color:var(--brand-orange);" title="Edit"><i class="bi bi-pencil"></i></a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="10" class="text-center py-4" style="color:#94A3B8;">No features created yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add Plan Modal -->
+<div class="modal fade" id="addPlanModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 24px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-plus-circle text-orange me-2"></i>Create New Plan</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="#">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create_plan">
+        <div class="modal-body p-4">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Plan Name *</label>
+              <input type="text" name="name" class="form-control" placeholder="e.g. Pro, Starter, Enterprise" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Slug *</label>
+              <input type="text" name="slug" class="form-control" placeholder="e.g. pro, starter" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Monthly Price (₹)</label>
+              <input type="number" name="price_monthly" class="form-control" placeholder="0" min="0" step="0.01">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Annual Price (₹)</label>
+              <input type="number" name="price_annual" class="form-control" placeholder="0" min="0" step="0.01">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Max Agents (-1 = unlimited)</label>
+              <input type="number" name="max_agents" class="form-control" placeholder="5" value="5" min="-1">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Max Leads (-1 = unlimited)</label>
+              <input type="number" name="max_leads" class="form-control" placeholder="1000" value="1000" min="-1">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Sort Order</label>
+              <input type="number" name="sort_order" class="form-control" value="0" min="0">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Description</label>
+              <textarea name="description" class="form-control" rows="2" placeholder="Plan summary"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Features Included</label>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
+                {% for feature in features %}
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="features" value="{{ feature.id }}" id="feat-{{ feature.id }}">
+                  <label class="form-check-label" for="feat-{{ feature.id }}" style="font-size:13px;">
+                    {{ feature.name }}
+                  </label>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="is_active" id="plan-active" checked style="width:2.5rem;height:1.25rem;">
+                <label class="form-check-label" for="plan-active" style="font-size:13px;">Active plan</label>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="is_public" id="plan-public" checked style="width:2.5rem;height:1.25rem;">
+                <label class="form-check-label" for="plan-public" style="font-size:13px;">Show on pricing page</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 24px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-primary"><i class="bi bi-check-lg"></i> Create Plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Feature Modal -->
+<div class="modal fade" id="addFeatureModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border-radius:16px;border:none;">
+      <div class="modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border-color);">
+        <h5 class="modal-title" style="font-size:15px;font-weight:700;"><i class="bi bi-lightning-charge text-orange me-2"></i>Add Feature</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="#">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create_feature">
+        <div class="modal-body p-4">
+          <div class="mb-3">
+            <label class="form-label">Feature Name *</label>
+            <input type="text" name="name" class="form-control" placeholder="e.g. WhatsApp API" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Slug * <span style="color:#94A3B8;font-weight:400;">(used in @require_feature decorator)</span></label>
+            <input type="text" name="slug" class="form-control" placeholder="e.g. whatsapp_api" pattern="[a-z0-9_]+" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="2" placeholder="What does this feature enable?"></textarea>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="is_active" id="feat-active" checked style="width:2.5rem;height:1.25rem;">
+            <label class="form-check-label" for="feat-active" style="font-size:13px;">Active feature</label>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border-color);">
+          <button type="button" class="btn-crm-outline" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn-crm-primary"><i class="bi bi-check-lg"></i> Add Feature</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-fill slug from name
+document.querySelector('[name="name"]')?.addEventListener('input', function() {
+  const slugField = document.querySelector('[name="slug"]');
+  if (slugField && !slugField.dataset.dirty) {
+    slugField.value = this.value.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+  }
+});
+document.querySelector('[name="slug"]')?.addEventListener('input', function() {
+  this.dataset.dirty = '1';
+});
+</script>
+{% endblock %}
