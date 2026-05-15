@@ -683,6 +683,28 @@ def bulk_assign_leads(request):
     """Handle bulk assignment of leads to agents"""
     
     if request.method == 'POST':
+        if request.POST.get('auto_assign'):
+            agents = list(User.objects.filter(is_staff=False, is_active=True))
+            if not agents:
+                messages.error(request, 'No active agents available for assignment.')
+                return redirect('leads:assign_leads')
+                
+            unassigned_leads = list(Lead.objects.filter(assigned_agent__isnull=True))
+            if not unassigned_leads:
+                messages.info(request, 'No unassigned leads available.')
+                return redirect('leads:assign_leads')
+                
+            agent_count = len(agents)
+            updates = []
+            for i, lead in enumerate(unassigned_leads):
+                lead.assigned_agent = agents[i % agent_count]
+                updates.append(lead)
+                
+            Lead.objects.bulk_update(updates, ['assigned_agent'])
+            messages.success(request, f'Successfully auto-assigned {len(updates)} leads among {agent_count} agent(s).')
+            return redirect('leads:assign_leads')
+
+        # Normal bulk assign
         lead_ids = request.POST.getlist('lead_ids')
         agent_id = request.POST.get('agent_id')
         
