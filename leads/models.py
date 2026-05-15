@@ -153,6 +153,18 @@ class CallLog(models.Model):
     class Meta:
         ordering = ['-call_date']
 
+    def get_disposition_display(self):
+        if not self.disposition:
+            return '—'
+        from tenants.models import Disposition
+        try:
+            d = Disposition.objects.filter(value=self.disposition).first()
+            if d:
+                return d.label
+        except Exception:
+            pass
+        return self.disposition.replace('_', ' ').title()
+
     def __str__(self):
         return f"{self.lead.name} — {self.disposition} by {self.agent.username}"
 
