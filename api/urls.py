@@ -58,6 +58,7 @@ urlpatterns = [
     path('leads/<int:lead_id>/call/',      views.create_call_log,       name='create_call_log'),
     path('leads/<int:lead_id>/follow-up/', views.create_follow_up,      name='create_follow_up'),
     path('leads/<int:lead_id>/recording/', views.upload_call_recording, name='upload_call_recording'),
+    path('call-logs/<int:call_log_id>/upload-recording/', views.upload_call_recording_by_log, name='upload_call_recording_by_log'),
     path('leads/<int:lead_id>/notes/',     views.lead_notes,            name='lead_notes'),
     path('leads/<int:lead_id>/notes/<int:note_id>/', views.lead_note_detail, name='lead_note_detail'),
     path('leads/<int:lead_id>/tasks/',     views.lead_tasks,            name='lead_tasks'),

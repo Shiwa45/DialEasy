@@ -264,7 +264,7 @@ class CallLogSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'lead', 'lead_id', 'agent', 'call_date',
             'duration', 'duration_display', 'disposition', 'disposition_display',
-            'remarks', 'recording', 'created_at'
+            'remarks', 'recording', 'recording_url', 'created_at'
         ]
         read_only_fields = ['created_at', 'agent']
 

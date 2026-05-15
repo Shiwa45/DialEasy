@@ -1069,6 +1069,57 @@ def upload_call_recording(request, lead_id):
     except Exception as e:
         return Response({'error': f'Upload failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_call_recording_by_log(request, call_log_id):
+    """
+    POST /api/call-logs/{call_log_id}/upload-recording/
+    Mobile app calls this with the call_log_id returned from createCallLog.
+    Uploads recording to Cloudinary; falls back to local storage.
+    """
+    try:
+        call_log = get_object_or_404(CallLog, pk=call_log_id, agent=request.user)
+        recording_file = request.FILES.get('recording')
+        if not recording_file:
+            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+
+        call_log.recording_size = recording_file.size
+
+        import cloudinary as _cloudinary
+        import cloudinary.uploader
+        _cfg = _cloudinary.config()
+        if _cfg.cloud_name and _cfg.api_key and _cfg.api_secret:
+            tenant_slug = getattr(request, 'tenant', None)
+            tenant_slug = tenant_slug.schema_name if tenant_slug else 'default'
+            result = cloudinary.uploader.upload(
+                recording_file,
+                resource_type='video',
+                folder=f'dialeasy/{tenant_slug}/recordings',
+                public_id=f'calllog_{call_log.pk}',
+                overwrite=True,
+                format='mp3',
+            )
+            call_log.recording_url = result['secure_url']
+        else:
+            call_log.recording = recording_file
+
+        call_log.save()
+
+        try:
+            from ai.transcription_service import process_call_recording
+            from tenants.feature_gates import tenant_has_feature
+            if tenant_has_feature(request, 'ai_transcription'):
+                process_call_recording(call_log.id)
+        except Exception:
+            pass
+
+        url = call_log.recording_url or (call_log.recording.url if call_log.recording else None)
+        return Response({'message': 'Recording uploaded successfully', 'url': url})
+    except Exception as e:
+        return Response({'error': f'Upload failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def enhanced_agent_dashboard(request):
