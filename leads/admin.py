@@ -5,7 +5,7 @@ from django.utils.html import format_html
 from .models import (
     Lead, CallLog, FollowUp, LeadUpload,
     LeadNote, LeadTask, Product, LeadProduct,
-    LeadActivity, AssignmentRule,
+    LeadActivity, AssignmentRule, Disposition,
 )
 from .integration_models import IntegrationConfig, IntegrationLog
 from .whatsapp_admin import *  # noqa
@@ -109,14 +109,64 @@ class LeadAdmin(admin.ModelAdmin):
     recalculate_scores.short_description = 'Recalculate lead scores'
 
 
+# ─── Disposition Admin ────────────────────────────────────────────────────────
+
+@admin.register(Disposition)
+class DispositionAdmin(admin.ModelAdmin):
+    list_display = ['sort_order', 'label', 'value', 'color_badge', 'is_active',
+                    'triggers_follow_up', 'updates_lead_status', 'updated_at']
+    list_display_links = ['label']
+    list_editable = ['sort_order', 'is_active']
+    list_filter = ['is_active', 'color', 'triggers_follow_up']
+    search_fields = ['label', 'value']
+    readonly_fields = ['created_at', 'updated_at']
+
+    fieldsets = (
+        ('Disposition', {'fields': ('label', 'value', 'color', 'is_active', 'sort_order')}),
+        ('Workflow', {
+            'fields': ('triggers_follow_up', 'updates_lead_status'),
+            'description': (
+                'triggers_follow_up: mobile prompts agent to schedule a follow-up. '
+                'updates_lead_status: auto-changes lead status when submitted.'
+            ),
+        }),
+        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj:
+            return self.readonly_fields + ['value']
+        return self.readonly_fields
+
+    def color_badge(self, obj):
+        css = {'success': '#1D9E75', 'warning': '#BA7517', 'danger': '#A32D2D',
+               'info': '#185FA5', 'default': '#888780'}
+        color = css.get(obj.color, '#888780')
+        return format_html(
+            '<span style="background:{};color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;">{}</span>',
+            color, obj.get_color_display()
+        )
+    color_badge.short_description = 'Color'
+
+
 # ─── CallLog Admin ────────────────────────────────────────────────────────────
 
 @admin.register(CallLog)
 class CallLogAdmin(admin.ModelAdmin):
-    list_display = ['lead', 'agent', 'call_date', 'disposition', 'duration']
+    list_display = ['lead', 'agent', 'call_date', 'disposition_display', 'duration', 'has_recording']
     list_filter = ['disposition', 'agent', 'call_date']
     search_fields = ['lead__name', 'lead__phone', 'agent__username']
-    readonly_fields = ['created_at']
+    readonly_fields = ['created_at', 'recording_url']
+
+    def disposition_display(self, obj):
+        return obj.get_disposition_display()
+    disposition_display.short_description = 'Disposition'
+
+    def has_recording(self, obj):
+        if obj.recording_url or obj.recording:
+            return format_html('<span style="color:#1D9E75;">&#10003;</span>')
+        return '—'
+    has_recording.short_description = 'Rec.'
 
 
 # ─── FollowUp Admin ───────────────────────────────────────────────────────────

@@ -545,6 +545,9 @@
     <a href="{% url 'leads:settings_dispositions' %}" class="nav-link-item {% if request.resolver_match.url_name == 'settings_dispositions' %}active{% endif %}">
       <i class="bi bi-sliders"></i> Dispositions
     </a>
+    <a href="{% url 'leads:call_recordings_list' %}" class="nav-link-item {% if request.resolver_match.url_name == 'call_recordings_list' %}active{% endif %}">
+      <i class="bi bi-mic-fill"></i> Recordings
+    </a>
     {% endif %}
 
     {% if tenant_features.whatsapp_api %}

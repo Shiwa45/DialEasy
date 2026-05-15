@@ -852,12 +852,12 @@ def send_whatsapp_message(request, lead_id):
 
 @login_required
 def settings_dispositions(request):
-    """Manage call dispositions. Staff-only; dispositions are shared across all tenants."""
+    """Manage call dispositions. Staff-only; per-tenant."""
     if not request.user.is_staff:
         messages.error(request, 'Access denied.')
         return redirect('leads:dashboard')
 
-    from tenants.models import Disposition
+    from leads.models import Disposition
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -917,4 +917,33 @@ def settings_dispositions(request):
         'color_choices': color_choices,
     })
 
-    return redirect(request.META.get('HTTP_REFERER', 'leads:dashboard'))
+
+@login_required
+def call_recordings_list(request):
+    """Tenant admin recording library — staff only, gated by call_recording feature."""
+    if not request.user.is_staff:
+        messages.error(request, 'Access denied.')
+        return redirect('leads:dashboard')
+
+    from tenants.feature_gates import tenant_has_feature
+    if not tenant_has_feature(request, 'call_recording'):
+        return render(request, 'leads/feature_not_available.html', {
+            'feature': 'Call Recording',
+        })
+
+    qs = CallLog.objects.select_related('lead', 'agent').filter(
+        recording_url__isnull=False
+    ).exclude(recording_url='').order_by('-call_date')
+
+    # Also include locally stored recordings for backward compat
+    local_qs = CallLog.objects.select_related('lead', 'agent').filter(
+        recording_url__isnull=True, recording__isnull=False
+    ).exclude(recording='').order_by('-call_date')
+
+    # Combine: cloud first, then local
+    from itertools import chain
+    recordings = list(chain(qs, local_qs))
+
+    return render(request, 'leads/call_recordings_list.html', {
+        'recordings': recordings,
+    })

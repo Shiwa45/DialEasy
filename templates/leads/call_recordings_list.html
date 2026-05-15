@@ -1,0 +1,78 @@
+{% extends "base/base.html" %}
+
+{% block title %}Call Recordings — DialEasy CRM{% endblock %}
+{% block page_title %}Call Recordings{% endblock %}
+{% block page_sub %}Listen to recorded calls{% endblock %}
+
+{% block content %}
+<div class="crm-card">
+  <div class="crm-card-title d-flex align-items-center justify-content-between mb-3">
+    <span><i class="bi bi-mic-fill"></i> Recording Library</span>
+    <span class="text-muted" style="font-size:12px;">{{ recordings|length }} recording{{ recordings|length|pluralize }}</span>
+  </div>
+
+  {% if not recordings %}
+  <div class="text-center py-5 text-muted">
+    <i class="bi bi-mic-mute" style="font-size:40px;display:block;margin-bottom:12px;"></i>
+    <p>No call recordings yet.</p>
+  </div>
+  {% else %}
+  <div class="table-responsive">
+    <table class="crm-table">
+      <thead>
+        <tr>
+          <th>Lead</th>
+          <th>Agent</th>
+          <th>Disposition</th>
+          <th>Duration</th>
+          <th>Date</th>
+          <th>Recording</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for call in recordings %}
+        <tr>
+          <td>
+            <a href="{% url 'leads:lead_detail' call.lead.id %}" style="font-weight:600;color:#0F172A;text-decoration:none;">
+              {{ call.lead.name }}
+            </a>
+            <br><span style="font-size:11px;color:#94A3B8;">{{ call.lead.phone }}</span>
+          </td>
+          <td style="font-size:12px;">{{ call.agent.get_full_name|default:call.agent.username }}</td>
+          <td>
+            <span class="badge-status badge-contacted" style="text-transform:capitalize;">
+              {{ call.get_disposition_display }}
+            </span>
+          </td>
+          <td style="font-size:12px;">
+            {% if call.duration %}
+              {% with secs=call.duration.total_seconds|floatformat:"0" %}
+                {{ secs|divisibleby:60 }}
+              {% endwith %}
+              {{ call.duration }}
+            {% else %}—{% endif %}
+          </td>
+          <td style="font-size:11px;color:#64748B;">{{ call.call_date|date:"d M Y, H:i" }}</td>
+          <td>
+            {% if call.recording_url %}
+              <audio controls preload="none" style="height:32px;max-width:260px;">
+                <source src="{{ call.recording_url }}" type="audio/mpeg">
+                Your browser does not support audio.
+              </audio>
+            {% elif call.recording %}
+              <audio controls preload="none" style="height:32px;max-width:260px;">
+                <source src="{{ call.recording.url }}" type="audio/mpeg">
+                Your browser does not support audio.
+              </audio>
+            {% else %}
+              <span class="text-muted" style="font-size:11px;">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 
 from leads.models import Lead, CallLog
 from agents.models import AgentProfile
-from tenants.models import Disposition
+from leads.models import Disposition
 from tenants.feature_gates import require_feature
 
 @login_required

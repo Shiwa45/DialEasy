@@ -9,7 +9,7 @@ import csv
 from datetime import timedelta
 from django.contrib.auth.models import User
 from agents.models import AgentProfile
-from tenants.models import Disposition
+from leads.models import Disposition
 from django.db.models import Count, Q, Sum, Avg, F, ExpressionWrapper, DurationField
 from django.http import HttpResponse
 from django.utils import timezone

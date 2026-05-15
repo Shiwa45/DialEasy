@@ -29,4 +29,7 @@ urlpatterns = [
 
     # Settings
     path('settings/dispositions/', views.settings_dispositions, name='settings_dispositions'),
+
+    # Call recordings (staff only, feature-gated)
+    path('recordings/', views.call_recordings_list, name='call_recordings_list'),
 ]

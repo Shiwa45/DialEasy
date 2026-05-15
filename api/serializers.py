@@ -271,7 +271,7 @@ class CallLogSerializer(serializers.ModelSerializer):
     def _disposition_map(self):
         # Cache per serializer instance so list views only hit the DB once.
         if '_disp_map' not in self.context:
-            from tenants.models import Disposition
+            from leads.models import Disposition
             self.context['_disp_map'] = {
                 d.value: d.label
                 for d in Disposition.objects.filter(is_active=True)
@@ -303,7 +303,7 @@ class CallLogCreateSerializer(serializers.ModelSerializer):
         fields = ['disposition', 'remarks', 'duration']
 
     def validate_disposition(self, value):
-        from tenants.models import Disposition
+        from leads.models import Disposition
         valid_values = list(
             Disposition.objects.filter(is_active=True).values_list('value', flat=True)
         )

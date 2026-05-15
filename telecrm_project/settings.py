@@ -61,7 +61,6 @@ SHARED_APPS = [
 
     # Third-party shared
     'rest_framework',
-    'rest_framework.authtoken',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',  # Enables logout blacklisting
     'corsheaders',
@@ -143,6 +142,15 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# ─── Cloudinary (call recording cloud storage) ────────────────────────────────
+import cloudinary
+cloudinary.config(
+    cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME', ''),
+    api_key    = os.getenv('CLOUDINARY_API_KEY', ''),
+    api_secret = os.getenv('CLOUDINARY_API_SECRET', ''),
+    secure     = True,
+)
 
 # ─── Authentication ───────────────────────────────────────────────────────────
 LOGIN_URL = '/accounts/login/'

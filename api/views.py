@@ -620,7 +620,7 @@ def create_call_log(request, lead_id):
             call_log = serializer.save()
 
             # Apply disposition workflow rules
-            from tenants.models import Disposition
+            from leads.models import Disposition
             triggers_follow_up = False
             try:
                 disp_config = Disposition.objects.get(value=call_log.disposition)
@@ -746,7 +746,7 @@ def call_disposition_choices(request):
     GET /api/utils/call-disposition-choices/
     Returns active dispositions from the DB (managed by super admin).
     """
-    from tenants.models import Disposition
+    from leads.models import Disposition
     dispositions = Disposition.objects.filter(is_active=True).order_by('sort_order', 'label')
     return Response({
         'choices': [
@@ -1011,44 +1011,63 @@ def sync_download_data(request):
 @permission_classes([IsAuthenticated])
 def upload_call_recording(request, lead_id):
     """
-    Upload call recording file
-    
     POST /api/leads/{lead_id}/recording/
-    File in 'recording' field
+    Uploads a call recording to Cloudinary and stores the secure URL.
+    Falls back to local storage if Cloudinary is not configured.
     """
     try:
         lead = get_object_or_404(Lead, id=lead_id, assigned_agent=request.user)
         recording_file = request.FILES.get('recording')
-        
+
         if not recording_file:
             return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Get the latest call log for this lead by this agent
+
         call_log = CallLog.objects.filter(lead=lead, agent=request.user).first()
-        
         if not call_log:
             return Response({'error': 'No call log found for this lead'}, status=status.HTTP_404_NOT_FOUND)
-        
-        call_log.recording = recording_file
+
         call_log.recording_size = recording_file.size
+
+        # Try Cloudinary upload; fall back to local storage if not configured
+        from django.conf import settings as dj_settings
+        import cloudinary.uploader
+        cloud_name = getattr(dj_settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME') or \
+                     (cloudinary.config().cloud_name if cloudinary.config().cloud_name else None)
+        # Determine if cloudinary is configured
+        import cloudinary as _cloudinary
+        _cfg = _cloudinary.config()
+        if _cfg.cloud_name and _cfg.api_key and _cfg.api_secret:
+            tenant_slug = getattr(request, 'tenant', None)
+            tenant_slug = tenant_slug.schema_name if tenant_slug else 'default'
+            folder = f'dialeasy/{tenant_slug}/recordings'
+            result = cloudinary.uploader.upload(
+                recording_file,
+                resource_type='video',   # Cloudinary uses 'video' for audio files
+                folder=folder,
+                public_id=f'calllog_{call_log.pk}',
+                overwrite=True,
+                format='mp3',
+            )
+            call_log.recording_url = result['secure_url']
+        else:
+            # No Cloudinary configured — save locally
+            call_log.recording = recording_file
+
         call_log.save()
 
-        # Phase 4 — AI Transcription
+        # Trigger AI transcription if tenant has the feature
         try:
             from ai.transcription_service import process_call_recording
             from tenants.feature_gates import tenant_has_feature
             if tenant_has_feature(request, 'ai_transcription'):
-                # In production, this should be an async Celery task
                 process_call_recording(call_log.id)
-        except Exception as ai_err:
-            print(f"AI processing trigger failed: {ai_err}")
-        
-        return Response({'message': 'Recording uploaded successfully', 'url': call_log.recording.url})
+        except Exception:
+            pass
+
+        url = call_log.recording_url or (call_log.recording.url if call_log.recording else None)
+        return Response({'message': 'Recording uploaded successfully', 'url': url})
     except Exception as e:
-        return Response(
-            {'error': f'Upload failed: {str(e)}'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return Response({'error': f'Upload failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1403,7 +1422,7 @@ def bulk_assign_leads_api(request):
 
 def _get_dispositions_for_config():
     """Return disposition list from DB for app_config and call-disposition-choices."""
-    from tenants.models import Disposition
+    from leads.models import Disposition
     dispositions = Disposition.objects.filter(is_active=True).order_by('sort_order', 'label')
     return [
         {

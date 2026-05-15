@@ -135,18 +135,61 @@ class Lead(models.Model):
         return self.lead_score
 
 
-# ─── Call Log (unchanged structure, kept here for reference) ─────────────────
+# ─── Disposition (per-tenant) ─────────────────────────────────────────────────
+
+class Disposition(models.Model):
+    """
+    A call outcome that agents can select when logging a call.
+    Per-tenant — each tenant manages their own list independently.
+    """
+    COLOR_CHOICES = [
+        ('default', 'Grey (Default)'),
+        ('success', 'Green (Positive)'),
+        ('warning', 'Orange (Neutral)'),
+        ('danger',  'Red (Negative)'),
+        ('info',    'Blue (Info)'),
+    ]
+
+    label = models.CharField(max_length=100, help_text='Human-readable label shown to agents. e.g. "Interested"')
+    value = models.SlugField(
+        max_length=50, unique=True,
+        help_text='Machine-readable key stored in call logs. e.g. "interested".'
+    )
+    color = models.CharField(max_length=10, choices=COLOR_CHOICES, default='default')
+    is_active = models.BooleanField(default=True)
+    sort_order = models.IntegerField(default=0)
+    triggers_follow_up = models.BooleanField(
+        default=False,
+        help_text='Prompt agent to schedule a follow-up after selecting this disposition.'
+    )
+    updates_lead_status = models.CharField(
+        max_length=20, blank=True,
+        help_text='Auto-update lead status to this value on submit. Leave blank for no change.'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'leads'
+        ordering = ['sort_order', 'label']
+        verbose_name = 'Disposition'
+        verbose_name_plural = 'Dispositions'
+
+    def __str__(self):
+        return f'{self.label} ({self.value})'
+
+
+# ─── Call Log ─────────────────────────────────────────────────────────────────
 
 class CallLog(models.Model):
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='call_logs')
     agent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='call_logs')
     call_date = models.DateTimeField(default=timezone.now)
     duration = models.DurationField(null=True, blank=True)
-    # Disposition slug — validated against tenants.Disposition at the API layer.
-    # max_length 50 to support custom disposition values.
     disposition = models.CharField(max_length=50)
     remarks = models.TextField(blank=True, null=True)
     recording = models.FileField(upload_to='call_recordings/', null=True, blank=True)
+    recording_url = models.URLField(max_length=500, null=True, blank=True)
     recording_size = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -156,7 +199,6 @@ class CallLog(models.Model):
     def get_disposition_display(self):
         if not self.disposition:
             return '—'
-        from tenants.models import Disposition
         try:
             d = Disposition.objects.filter(value=self.disposition).first()
             if d:
