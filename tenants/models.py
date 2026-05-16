@@ -119,6 +119,19 @@ class Client(TenantMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Super-admin override: set a custom agent limit for this tenant, regardless of plan.
+    # Leave blank (null) to fall back to the plan's max_agents value.
+    max_agents_override = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            'Custom max agent limit for this tenant. '
+            'Overrides the Plan\'s max_agents value. '
+            'Leave blank to use the Plan\'s limit. '
+            'Set to -1 for unlimited.'
+        )
+    )
+
     # TenantMixin requires this
     auto_create_schema = True
 
@@ -206,6 +219,20 @@ class Client(TenantMixin):
     def current_plan(self):
         sub = self.active_subscription
         return sub.plan if sub else None
+
+    @property
+    def effective_agent_limit(self) -> int:
+        """
+        Returns the effective max agents limit for this tenant.
+        Priority: tenant-level override > plan limit > fallback of 5.
+        Returns -1 for unlimited.
+        """
+        if self.max_agents_override is not None:
+            return self.max_agents_override
+        plan = self.current_plan
+        if plan is not None:
+            return plan.max_agents
+        return 5  # Sensible fallback when no plan is assigned
 
     def has_feature(self, feature_slug: str) -> bool:
         """Check if this tenant's active plan includes the given feature slug."""

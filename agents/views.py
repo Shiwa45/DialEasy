@@ -209,6 +209,29 @@ def create_agent(request):
         except (ValueError, TypeError):
             target_conversions = 10
         
+        # ── Agent Limit Check ──────────────────────────────────────────────────
+        # Look up this tenant's effective limit from the public schema.
+        try:
+            from django.db import connection
+            from django_tenants.utils import get_public_schema_name
+            current_schema = connection.schema_name
+            if current_schema != get_public_schema_name():
+                from tenants.models import Client
+                tenant = Client.objects.using('default').get(schema_name=current_schema)
+                limit = tenant.effective_agent_limit
+                if limit != -1:
+                    # Count active agents in this tenant (non-superusers only)
+                    current_count = User.objects.filter(is_superuser=False).count()
+                    if current_count >= limit:
+                        messages.error(
+                            request,
+                            f'Agent limit reached ({current_count}/{limit}). '
+                            f'Please contact your provider to increase your plan limit.'
+                        )
+                        return render(request, 'agents/create_agent.html')
+        except Exception:
+            pass  # Fail open — don't block creation if limit check errors
+
         # Validation
         if not username:
             messages.error(request, 'Username is required.')

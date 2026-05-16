@@ -140,6 +140,7 @@ class ClientAdmin(admin.ModelAdmin):
     list_display = [
         'name', 'schema_name', 'owner_email',
         'current_plan_display', 'subscription_status',
+        'agent_limit_display',
         'is_active', 'created_at'
     ]
     list_filter = ['is_active', 'created_at']
@@ -155,6 +156,13 @@ class ClientAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Tenant Information', {
             'fields': ('name', 'schema_name', 'owner_email', 'phone', 'address', 'logo', 'is_active')
+        }),
+        ('Agent Limit Override', {
+            'fields': ('max_agents_override',),
+            'description': (
+                'Set a custom agent limit for this tenant that overrides the plan\'s default. '
+                'Leave blank to use the plan limit. Set -1 for unlimited.'
+            ),
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
@@ -186,6 +194,21 @@ class ClientAdmin(admin.ModelAdmin):
             color, sub.get_status_display()
         )
     subscription_status.short_description = 'Subscription'
+
+    def agent_limit_display(self, obj):
+        limit = obj.effective_agent_limit
+        override = obj.max_agents_override
+        if limit == -1:
+            label = 'Unlimited'
+            color = '#1D9E75'
+        else:
+            label = str(limit)
+            color = '#185FA5'
+        tag = format_html('<span style="font-weight:bold;color:{}">{}</span>', color, label)
+        if override is not None:
+            tag = format_html('{} <span style="font-size:10px;color:#BA7517;">(override)</span>', tag)
+        return tag
+    agent_limit_display.short_description = 'Agent Limit'
 
 
 # ─── Subscription Admin ───────────────────────────────────────────────────────
