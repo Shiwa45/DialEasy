@@ -573,9 +573,12 @@
         <div class="user-name text-truncate">{{ request.user.get_full_name|default:request.user.username }}</div>
         <div class="user-role">{% if request.user.is_superuser %}Super Admin{% elif request.user.is_staff %}Admin{% else %}Agent{% endif %}</div>
       </div>
-      <a href="{% url 'logout' %}" class="icon-btn" title="Logout" style="border:none;background:transparent;">
-        <i class="bi bi-box-arrow-right" style="font-size:16px;color:#64748B;"></i>
-      </a>
+      <form method="post" action="{% url 'logout' %}" style="margin:0;padding:0;">
+        {% csrf_token %}
+        <button type="submit" class="icon-btn" title="Logout" style="border:none;background:transparent;cursor:pointer;">
+          <i class="bi bi-box-arrow-right" style="font-size:16px;color:#64748B;"></i>
+        </button>
+      </form>
     </div>
   </div>
 </nav>
