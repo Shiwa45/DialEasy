@@ -220,8 +220,13 @@ def create_agent(request):
                 tenant = Client.objects.using('default').get(schema_name=current_schema)
                 limit = tenant.effective_agent_limit
                 if limit != -1:
-                    # Count active agents in this tenant (non-superusers only)
-                    current_count = User.objects.filter(is_superuser=False).count()
+                    # Count only actual agent accounts (AgentProfile records),
+                    # excluding tenant admins (is_staff=True) and superusers.
+                    current_count = AgentProfile.objects.filter(
+                        user__is_staff=False,
+                        user__is_superuser=False,
+                        is_active=True,
+                    ).count()
                     if current_count >= limit:
                         messages.error(
                             request,
