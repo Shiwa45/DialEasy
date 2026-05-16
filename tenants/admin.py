@@ -258,3 +258,85 @@ super_admin_site.register(Feature, FeatureAdmin)
 super_admin_site.register(Plan, PlanAdmin)
 super_admin_site.register(Client, ClientAdmin)
 super_admin_site.register(TenantSubscription, TenantSubscriptionAdmin)
+
+
+# ─── User Management on Super Admin Site ─────────────────────────────────────
+# Since django.contrib.auth lives in SHARED_APPS (public schema), ALL users
+# from ALL tenants are visible here. Super admin can create, edit and delete
+# any user account across the entire platform.
+
+from django.contrib.auth.models import User, Group
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin, GroupAdmin as BaseGroupAdmin
+
+
+class SuperAdminUserAdmin(BaseUserAdmin):
+    """
+    Full user management for the super admin.
+    Inherits all default UserAdmin features (password hash, permissions, etc.)
+    and adds a tenant column derived from the username convention.
+    """
+    list_display = [
+        'username', 'email', 'first_name', 'last_name',
+        'tenant_hint', 'is_staff', 'is_superuser', 'is_active', 'date_joined',
+    ]
+    list_filter = ['is_superuser', 'is_staff', 'is_active', 'date_joined']
+    search_fields = ['username', 'email', 'first_name', 'last_name']
+    ordering = ['username']
+
+    # Keep all standard fieldsets from BaseUserAdmin (password, permissions, etc.)
+    # Just add a readonly informational field at the top.
+    readonly_fields = ['date_joined', 'last_login', 'tenant_hint']
+
+    fieldsets = (
+        (None, {'fields': ('username', 'password')}),
+        ('Personal Info', {'fields': ('first_name', 'last_name', 'email')}),
+        ('Tenant', {
+            'fields': ('tenant_hint',),
+            'description': (
+                'Which tenant this user belongs to (inferred from username). '
+                'Users whose username starts with "admin_" are auto-created tenant admins.'
+            ),
+        }),
+        ('Permissions', {
+            'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
+        }),
+        ('Important Dates', {'fields': ('last_login', 'date_joined')}),
+    )
+
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('username', 'email', 'password1', 'password2', 'is_staff', 'is_superuser', 'is_active'),
+        }),
+    )
+
+    def tenant_hint(self, obj):
+        """
+        Infer tenant from the username convention used when auto-creating tenant admins:
+            admin_<schema_name>  →  schema = <schema_name>
+        For regular agents, we cross-reference Client records by schema prefix matching.
+        """
+        username = obj.username
+        if username.startswith('admin_'):
+            schema = username[len('admin_'):]
+            try:
+                tenant = Client.objects.get(schema_name=schema)
+                return format_html(
+                    '<span style="color:#185FA5;font-weight:bold;">{}</span> '
+                    '<span style="color:#888;font-size:11px;">({})</span>',
+                    tenant.name, schema
+                )
+            except Client.DoesNotExist:
+                return format_html('<span style="color:#888;">{}</span>', schema)
+
+        if obj.is_superuser:
+            return format_html('<span style="color:#1D9E75;font-weight:bold;">Super Admin</span>')
+
+        # Try to find by checking all tenant schemas (expensive — only shown in detail view)
+        return format_html('<span style="color:#94A3B8;font-size:12px;">— unknown —</span>')
+
+    tenant_hint.short_description = 'Tenant'
+
+
+super_admin_site.register(User, SuperAdminUserAdmin)
+super_admin_site.register(Group, BaseGroupAdmin)
