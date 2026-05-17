@@ -5,6 +5,7 @@ import numpy as np
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.db import models
 from django.db.models import Count, Q
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -86,6 +87,91 @@ def dashboard(request):
     return render(request, 'leads/dashboard.html', context)
 
 
+# ─── Funnel Management ────────────────────────────────────────────────────────
+
+@login_required
+def funnel_list(request):
+    if not request.user.is_staff:
+        return redirect('leads:lead_list')
+    from leads.models import Funnel
+    funnels = Funnel.objects.prefetch_related('agents').annotate(
+        total_leads=models.Count('leads')
+    )
+    _agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+    agents = User.objects.filter(id__in=_agent_ids, is_active=True)
+    return render(request, 'leads/funnel_list.html', {
+        'funnels': funnels,
+        'agents': agents,
+    })
+
+
+@login_required
+@require_POST
+def funnel_create(request):
+    if not request.user.is_staff:
+        return redirect('leads:lead_list')
+    from leads.models import Funnel
+    name = request.POST.get('name', '').strip()
+    if not name:
+        messages.error(request, 'Funnel name is required.')
+        return redirect('leads:funnel_list')
+    funnel = Funnel.objects.create(
+        name=name,
+        description=request.POST.get('description', '').strip(),
+        is_active=True,
+        created_by=request.user,
+    )
+    agent_ids = request.POST.getlist('agent_ids')
+    if agent_ids:
+        funnel.agents.set(User.objects.filter(id__in=agent_ids, is_active=True))
+    messages.success(request, f'Funnel "{funnel.name}" created.')
+    return redirect('leads:funnel_list')
+
+
+@login_required
+def funnel_edit(request, funnel_id):
+    if not request.user.is_staff:
+        return redirect('leads:lead_list')
+    from leads.models import Funnel
+    funnel = get_object_or_404(Funnel, id=funnel_id)
+    _agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+    agents = User.objects.filter(id__in=_agent_ids, is_active=True)
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        if not name:
+            messages.error(request, 'Funnel name is required.')
+            return redirect('leads:funnel_edit', funnel_id=funnel_id)
+        funnel.name = name
+        funnel.description = request.POST.get('description', '').strip()
+        funnel.is_active = 'is_active' in request.POST
+        funnel.save()
+        funnel.agents.set(User.objects.filter(id__in=request.POST.getlist('agent_ids'), is_active=True))
+        messages.success(request, f'Funnel "{funnel.name}" updated.')
+        return redirect('leads:funnel_list')
+
+    return render(request, 'leads/funnel_edit.html', {
+        'funnel': funnel,
+        'agents': agents,
+        'funnel_agents': set(funnel.agents.values_list('id', flat=True)),
+    })
+
+
+@login_required
+@require_POST
+def funnel_delete(request, funnel_id):
+    if not request.user.is_staff:
+        return redirect('leads:lead_list')
+    from leads.models import Funnel
+    funnel = get_object_or_404(Funnel, id=funnel_id)
+    name = funnel.name
+    # Detach leads before deleting (SET_NULL handled by FK but explicit for clarity)
+    funnel.leads.update(funnel=None)
+    funnel.delete()
+    messages.success(request, f'Funnel "{name}" deleted. Leads were kept and are now unassigned to any funnel.')
+    return redirect('leads:funnel_list')
+
+
 @login_required
 @require_POST
 def delete_lead(request, lead_id):
@@ -117,11 +203,11 @@ def bulk_delete_leads(request):
 @login_required
 def lead_list(request):
     """Display all leads with filtering and search"""
-    
-    leads = Lead.objects.select_related('assigned_agent').all()
-    
-    # Search functionality
-    search_query = request.GET.get('search')
+    from leads.models import Funnel
+
+    leads = Lead.objects.select_related('assigned_agent', 'funnel').all()
+
+    search_query = request.GET.get('search', '').strip()
     if search_query:
         leads = leads.filter(
             Q(name__icontains=search_query) |
@@ -129,36 +215,46 @@ def lead_list(request):
             Q(email__icontains=search_query) |
             Q(company__icontains=search_query)
         )
-    
-    # Status filter
-    status_filter = request.GET.get('status')
+
+    status_filter = request.GET.get('status', '')
     if status_filter:
         leads = leads.filter(status=status_filter)
-    
-    # Agent filter
-    agent_filter = request.GET.get('agent')
+
+    agent_filter = request.GET.get('agent', '')
     if agent_filter:
         leads = leads.filter(assigned_agent_id=agent_filter)
-    
-    # Pagination
+
+    funnel_filter = request.GET.get('funnel', '')
+    if funnel_filter:
+        leads = leads.filter(funnel_id=funnel_filter)
+
+    date_from = request.GET.get('date_from', '')
+    if date_from:
+        leads = leads.filter(created_at__date__gte=date_from)
+
+    date_to = request.GET.get('date_to', '')
+    if date_to:
+        leads = leads.filter(created_at__date__lte=date_to)
+
     paginator = Paginator(leads, 25)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    
-    # Get agents for filter dropdown — scoped to this tenant only
+    page_obj = paginator.get_page(request.GET.get('page'))
+
     _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
     agents = User.objects.filter(id__in=_tenant_agent_ids, is_active=True)
-    
-    context = {
+    funnels = Funnel.objects.filter(is_active=True)
+
+    return render(request, 'leads/lead_list.html', {
         'page_obj': page_obj,
         'agents': agents,
+        'funnels': funnels,
         'search_query': search_query,
         'status_filter': status_filter,
         'agent_filter': agent_filter,
+        'funnel_filter': funnel_filter,
+        'date_from': date_from,
+        'date_to': date_to,
         'status_choices': Lead.STATUS_CHOICES,
-    }
-    
-    return render(request, 'leads/lead_list.html', context)
+    })
 
 
 @login_required
@@ -181,85 +277,98 @@ def lead_detail(request, lead_id):
 @login_required
 def upload_leads(request):
     """Handle lead file uploads with enhanced error handling"""
-    
+    from leads.models import Funnel
+
     if request.method == 'POST':
         uploaded_file = request.FILES.get('lead_file')
-        
+
         if not uploaded_file:
             messages.error(request, 'Please select a file to upload.')
             return redirect('leads:upload_leads')
-        
-        # Validate file format
+
         file_extension = uploaded_file.name.lower().split('.')[-1]
         if file_extension not in ['csv', 'xlsx', 'xls']:
             messages.error(request, 'Please upload a CSV or Excel file.')
             return redirect('leads:upload_leads')
-        
+
+        # Resolve funnel and override agent if provided
+        funnel = None
+        funnel_id = request.POST.get('funnel_id')
+        if funnel_id:
+            funnel = Funnel.objects.filter(id=funnel_id, is_active=True).first()
+
+        # If no funnel, check for explicit single-agent override
+        override_agent = None
+        agent_id = request.POST.get('agent_id')
+        if agent_id and not funnel:
+            override_agent = User.objects.filter(id=agent_id, is_active=True).first()
+
         try:
-            # Create upload record
             upload_record = LeadUpload.objects.create(
                 file=uploaded_file,
                 uploaded_by=request.user,
                 status='processing'
             )
-            
-            # Process the file
-            success_count, error_count, errors = process_lead_file_enhanced(uploaded_file)
-            
-            # Update upload record
+
+            success_count, error_count, errors = process_lead_file_enhanced(
+                uploaded_file, funnel=funnel, override_agent=override_agent
+            )
+
             upload_record.processed_records = success_count
             upload_record.failed_records = error_count
             upload_record.total_records = success_count + error_count
             upload_record.status = 'completed' if error_count == 0 else 'failed'
-            
             if errors:
-                upload_record.error_log = '\n'.join(errors[:50])  # Limit error log size
-            
+                upload_record.error_log = '\n'.join(errors[:50])
             upload_record.save()
-            
+
             if success_count > 0:
-                messages.success(
-                    request, 
-                    f'Successfully uploaded {success_count} leads. {error_count} failed.'
-                )
+                funnel_msg = f' into funnel "{funnel.name}"' if funnel else ''
+                messages.success(request, f'Successfully imported {success_count} leads{funnel_msg}. {error_count} failed.')
                 if errors:
-                    # Show first few errors as warning
                     error_preview = '; '.join(errors[:3])
                     if len(errors) > 3:
-                        error_preview += f"... and {len(errors) - 3} more errors"
+                        error_preview += f'... and {len(errors) - 3} more errors'
                     messages.warning(request, f'Errors: {error_preview}')
             else:
-                messages.error(request, 'No leads were uploaded. Please check your file format.')
+                messages.error(request, 'No leads were imported. Please check your file format.')
                 if errors:
-                    error_preview = '; '.join(errors[:5])
-                    messages.error(request, f'Errors found: {error_preview}')
-                
+                    messages.error(request, f'Errors: {"; ".join(errors[:5])}')
+
         except Exception as e:
             upload_record.status = 'failed'
             upload_record.error_log = str(e)
             upload_record.save()
             messages.error(request, f'Error processing file: {str(e)}')
-            
+
         return redirect('leads:upload_leads')
-    
-    # GET request - show upload form
-    recent_uploads = LeadUpload.objects.filter(
-        uploaded_by=request.user
-    ).order_by('-created_at')[:10]
-    
-    context = {
+
+    # GET
+    from agents.models import AgentProfile
+    _agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+    agents = User.objects.filter(id__in=_agent_ids, is_active=True)
+    funnels = Funnel.objects.filter(is_active=True).prefetch_related('agents')
+    recent_uploads = LeadUpload.objects.filter(uploaded_by=request.user).order_by('-created_at')[:10]
+
+    return render(request, 'leads/upload_leads.html', {
         'recent_uploads': recent_uploads,
-    }
-    
-    return render(request, 'leads/upload_leads.html', context)
+        'agents': agents,
+        'funnels': funnels,
+    })
 
 
-def process_lead_file_enhanced(uploaded_file):
-    """Enhanced CSV/Excel file processing with better error handling"""
-    
+def process_lead_file_enhanced(uploaded_file, funnel=None, override_agent=None):
+    """Enhanced CSV/Excel file processing with funnel + round-robin agent support."""
+
     errors = []
     success_count = 0
     error_count = 0
+
+    # Build agent pool for round-robin assignment
+    funnel_agents = []
+    if funnel:
+        funnel_agents = list(funnel.agents.filter(is_active=True))
+    agent_index = 0
     
     try:
         # Reset file pointer to beginning
@@ -387,6 +496,17 @@ def process_lead_file_enhanced(uploaded_file):
                     if source:
                         lead_data['source'] = source
                 
+                # Assign funnel
+                if funnel:
+                    lead_data['funnel'] = funnel
+
+                # Assign agent: round-robin across funnel agents, or single override
+                if funnel_agents:
+                    lead_data['assigned_agent'] = funnel_agents[agent_index % len(funnel_agents)]
+                    agent_index += 1
+                elif override_agent:
+                    lead_data['assigned_agent'] = override_agent
+
                 # Create lead
                 Lead.objects.create(**lead_data)
                 success_count += 1

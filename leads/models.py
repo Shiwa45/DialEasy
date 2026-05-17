@@ -15,6 +15,42 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 
+# ─── Funnel ───────────────────────────────────────────────────────────────────
+
+class Funnel(models.Model):
+    """
+    A sales/marketing funnel (project) that groups leads and their agents.
+    Leads imported into a funnel are auto-distributed equally across its agents.
+    """
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    agents = models.ManyToManyField(
+        User, blank=True, related_name='funnels',
+        help_text='Agents assigned to work leads in this funnel.'
+    )
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True,
+        related_name='created_funnels'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def lead_count(self):
+        return self.leads.count()
+
+    @property
+    def agent_count(self):
+        return self.agents.count()
+
+
 # ─── Lead ─────────────────────────────────────────────────────────────────────
 
 class Lead(models.Model):
@@ -41,6 +77,11 @@ class Lead(models.Model):
         related_name='assigned_leads'
     )
     source = models.CharField(max_length=100, blank=True, null=True)
+    funnel = models.ForeignKey(
+        'Funnel', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='leads',
+        help_text='Funnel this lead belongs to.'
+    )
 
     # ── PHASE 1: kept for backward compat, but prefer LeadNote model ──────────
     notes = models.TextField(

@@ -27,6 +27,12 @@ urlpatterns = [
     # Lead deletion
     path('lead/<int:lead_id>/delete/', views.delete_lead, name='delete_lead'),
     path('bulk-delete/', views.bulk_delete_leads, name='bulk_delete_leads'),
+
+    # Funnels
+    path('funnels/', views.funnel_list, name='funnel_list'),
+    path('funnels/new/', views.funnel_create, name='funnel_create'),
+    path('funnels/<int:funnel_id>/edit/', views.funnel_edit, name='funnel_edit'),
+    path('funnels/<int:funnel_id>/delete/', views.funnel_delete, name='funnel_delete'),
     
     # Integrations
     path('integrations/', views.integrations_view, name='integrations'),

@@ -59,15 +59,39 @@
           </div>
         </div>
 
+        <!-- Funnel selection -->
         <div class="mb-3">
-          <label class="form-label">Assign To Agent</label>
+          <label class="form-label fw-semibold" style="font-size:13px;">Funnel <span class="text-muted fw-normal">(optional)</span></label>
+          <select name="funnel_id" class="form-select" id="funnelSelect" onchange="onFunnelChange(this.value)">
+            <option value="">— No funnel —</option>
+            {% for f in funnels %}
+            <option value="{{ f.id }}" data-agents="{{ f.agents.count }}">
+              {{ f.name }} ({{ f.agents.count }} agent{{ f.agents.count|pluralize }})
+            </option>
+            {% endfor %}
+          </select>
+          <div class="form-text" style="font-size:11px;color:#94A3B8;">
+            Selecting a funnel auto-distributes leads equally among the funnel's agents.
+          </div>
+        </div>
+
+        <!-- Funnel info banner -->
+        <div id="funnelInfo" style="display:none;" class="alert alert-info py-2 mb-3" style="font-size:12px;">
+          <i class="bi bi-info-circle"></i>
+          Leads will be distributed equally (round-robin) across the funnel's agents.
+          The "Assign to Agent" field below is ignored when a funnel is selected.
+        </div>
+
+        <!-- Agent override (hidden when funnel selected) -->
+        <div class="mb-3" id="agentOverrideDiv">
+          <label class="form-label fw-semibold" style="font-size:13px;">Assign To Agent <span class="text-muted fw-normal">(optional)</span></label>
           <select name="agent_id" class="form-select">
             <option value="">Auto-assign (round robin)</option>
             {% for agent in agents %}
             <option value="{{ agent.id }}">{{ agent.get_full_name|default:agent.username }}</option>
             {% endfor %}
           </select>
-          <div class="form-text" style="font-size:11px;color:#94A3B8;">Leave blank to distribute equally among active agents.</div>
+          <div class="form-text" style="font-size:11px;color:#94A3B8;">Leave blank to distribute equally among all active agents.</div>
         </div>
 
         <div class="mb-4">
@@ -201,5 +225,17 @@ document.getElementById('upload-form').addEventListener('submit', () => {
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Importing…';
   btn.disabled = true;
 });
+
+function onFunnelChange(val) {
+  const infoBox = document.getElementById('funnelInfo');
+  const agentDiv = document.getElementById('agentOverrideDiv');
+  if (val) {
+    infoBox.style.display = '';
+    agentDiv.style.display = 'none';
+  } else {
+    infoBox.style.display = 'none';
+    agentDiv.style.display = '';
+  }
+}
 </script>
 {% endblock %}

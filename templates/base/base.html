@@ -501,65 +501,50 @@
   {% endif %}
 
   <div class="nav-items">
-    <div class="nav-section-label">Main</div>
 
+    <!-- ── Main ── -->
+    <div class="nav-section-label">Main</div>
     <a href="{% url 'leads:dashboard' %}" class="nav-link-item {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
       <i class="bi bi-speedometer2"></i> Dashboard
     </a>
-
     <a href="{% url 'leads:lead_list' %}" class="nav-link-item {% if request.resolver_match.url_name == 'lead_list' %}active{% endif %}">
       <i class="bi bi-people"></i> Leads
     </a>
-
-    <a href="{% url 'leads:upload_leads' %}" class="nav-link-item {% if request.resolver_match.url_name == 'upload_leads' %}active{% endif %}">
-      <i class="bi bi-cloud-upload"></i> Import Leads
-    </a>
-
-    <a href="{% url 'leads:assign_leads' %}" class="nav-link-item {% if request.resolver_match.url_name == 'assign_leads' %}active{% endif %}">
-      <i class="bi bi-shuffle"></i> Auto Assign
-    </a>
-
-    <a href="{% url 'leads:integrations' %}" class="nav-link-item {% if request.resolver_match.url_name == 'integrations' %}active{% endif %}">
-      <i class="bi bi-plug"></i> Integrations
-    </a>
-
-    <div class="nav-section-label">Agents</div>
-
-    <a href="{% url 'agents:agent_list' %}" class="nav-link-item {% if request.resolver_match.url_name == 'agent_list' %}active{% endif %}">
-      <i class="bi bi-headset"></i> Agent Management
-    </a>
-
-    <a href="{% url 'agents:agent_activity_list' %}" class="nav-link-item {% if request.resolver_match.url_name == 'agent_activity_list' %}active{% endif %}">
-      <i class="bi bi-broadcast"></i> Live Monitor
-    </a>
-
-    <div class="nav-section-label">Reports</div>
-
     <a href="{% url 'reports:reports_dashboard' %}" class="nav-link-item {% if request.resolver_match.app_name == 'reports' %}active{% endif %}">
       <i class="bi bi-bar-chart-line"></i> Reports
     </a>
 
-    <div class="nav-section-label">Settings</div>
-
+    <!-- ── Lead Management (staff only) ── -->
     {% if request.user.is_staff %}
-    <a href="{% url 'leads:settings_dispositions' %}" class="nav-link-item {% if request.resolver_match.url_name == 'settings_dispositions' %}active{% endif %}">
-      <i class="bi bi-sliders"></i> Dispositions
+    <div class="nav-section-label">Lead Management</div>
+    <a href="{% url 'leads:funnel_list' %}" class="nav-link-item {% if request.resolver_match.url_name in 'funnel_list,funnel_edit' %}active{% endif %}">
+      <i class="bi bi-filter-square"></i> Funnels
+    </a>
+    <a href="{% url 'leads:upload_leads' %}" class="nav-link-item {% if request.resolver_match.url_name == 'upload_leads' %}active{% endif %}">
+      <i class="bi bi-cloud-upload"></i> Import Leads
+    </a>
+    <a href="{% url 'leads:assign_leads' %}" class="nav-link-item {% if request.resolver_match.url_name == 'assign_leads' %}active{% endif %}">
+      <i class="bi bi-shuffle"></i> Auto Assign
     </a>
     {% endif %}
 
-    {% if tenant_features.call_recording and request.user.is_staff %}
-    <a href="{% url 'leads:call_recordings_list' %}" class="nav-link-item {% if request.resolver_match.url_name == 'call_recordings_list' %}active{% endif %}">
-      <i class="bi bi-mic-fill"></i> Recordings
+    <!-- ── Team (staff only) ── -->
+    {% if request.user.is_staff %}
+    <div class="nav-section-label">Team</div>
+    <a href="{% url 'agents:agent_list' %}" class="nav-link-item {% if request.resolver_match.url_name == 'agent_list' %}active{% endif %}">
+      <i class="bi bi-headset"></i> Agents
+    </a>
+    <a href="{% url 'agents:agent_activity_list' %}" class="nav-link-item {% if request.resolver_match.url_name == 'agent_activity_list' %}active{% endif %}">
+      <i class="bi bi-broadcast"></i> Live Monitor
     </a>
     {% endif %}
 
+    <!-- ── Messaging (feature gated) ── -->
     {% if tenant_features.whatsapp_api or tenant_features.bulk_whatsapp %}
-    <div class="nav-section-label">WhatsApp</div>
+    <div class="nav-section-label">Messaging</div>
     <a href="{% url 'leads:integrations' %}" class="nav-link-item {% if request.resolver_match.url_name == 'integrations' %}active{% endif %}">
       <i class="bi bi-whatsapp"></i> WhatsApp Setup
     </a>
-    {% endif %}
-
     {% if tenant_features.bulk_whatsapp and request.user.is_staff %}
     <a href="{% url 'leads:campaign_list' %}" class="nav-link-item {% if request.resolver_match.url_name in 'campaign_list,campaign_create,campaign_detail' %}active{% endif %}">
       <i class="bi bi-megaphone-fill"></i> Bulk Campaigns
@@ -569,6 +554,23 @@
     </a>
     <a href="{% url 'leads:provider_settings' %}" class="nav-link-item {% if request.resolver_match.url_name == 'provider_settings' %}active{% endif %}">
       <i class="bi bi-broadcast-pin"></i> WA Providers
+    </a>
+    {% endif %}
+    {% endif %}
+
+    <!-- ── Settings (staff only) ── -->
+    {% if request.user.is_staff %}
+    <div class="nav-section-label">Settings</div>
+    <a href="{% url 'leads:settings_dispositions' %}" class="nav-link-item {% if request.resolver_match.url_name == 'settings_dispositions' %}active{% endif %}">
+      <i class="bi bi-sliders"></i> Dispositions
+    </a>
+    {% if tenant_features.call_recording %}
+    <a href="{% url 'leads:call_recordings_list' %}" class="nav-link-item {% if request.resolver_match.url_name == 'call_recordings_list' %}active{% endif %}">
+      <i class="bi bi-mic-fill"></i> Recordings
+    </a>
+    {% endif %}
+    <a href="{% url 'leads:integrations' %}" class="nav-link-item {% if request.resolver_match.url_name == 'integrations' and not tenant_features.whatsapp_api and not tenant_features.bulk_whatsapp %}active{% endif %}">
+      <i class="bi bi-plug"></i> Integrations
     </a>
     {% endif %}
 

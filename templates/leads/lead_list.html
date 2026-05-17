@@ -14,7 +14,7 @@
 <!-- ── Filters & Search ── -->
 <div class="crm-card mb-3">
   <form method="get" class="row g-2 align-items-end">
-    <div class="col-12 col-md-4">
+    <div class="col-12 col-md-3">
       <label class="form-label">Search</label>
       <div class="topbar-search" style="width:100%;max-width:100%;">
         <i class="bi bi-search" style="font-size:13px;"></i>
@@ -42,10 +42,26 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-12 col-md-4 d-flex gap-2">
-      <button type="submit" class="btn-crm-primary flex-grow-1"><i class="bi bi-funnel"></i> Filter</button>
-      <a href="{% url 'leads:lead_list' %}" class="btn-crm-outline"><i class="bi bi-x-lg"></i> Clear</a>
-      <a href="{% url 'leads:assign_leads' %}" class="btn-crm-outline"><i class="bi bi-shuffle"></i> Assign</a>
+    <div class="col-6 col-md-2">
+      <label class="form-label">Funnel</label>
+      <select name="funnel" class="form-select form-select-sm">
+        <option value="">All Funnels</option>
+        {% for f in funnels %}
+        <option value="{{ f.id }}" {% if funnel_filter == f.id|stringformat:"s" %}selected{% endif %}>{{ f.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-1">
+      <label class="form-label">From</label>
+      <input type="date" name="date_from" class="form-control form-control-sm" value="{{ date_from|default:'' }}">
+    </div>
+    <div class="col-6 col-md-1">
+      <label class="form-label">To</label>
+      <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to|default:'' }}">
+    </div>
+    <div class="col-12 col-md-1 d-flex gap-1">
+      <button type="submit" class="btn-crm-primary flex-grow-1" title="Apply filters"><i class="bi bi-funnel"></i></button>
+      <a href="{% url 'leads:lead_list' %}" class="btn-crm-outline" title="Clear"><i class="bi bi-x-lg"></i></a>
     </div>
   </form>
 </div>
@@ -128,6 +144,11 @@
               <a href="{% url 'leads:lead_detail' lead.id %}" style="font-weight:600;color:#0F172A;text-decoration:none;">
                 {{ lead.name }}
               </a>
+              {% if lead.funnel %}
+              <span style="font-size:10px;background:var(--brand-orange-light);color:var(--brand-orange-dark);border-radius:5px;padding:1px 6px;margin-left:4px;font-weight:600;">
+                {{ lead.funnel.name }}
+              </span>
+              {% endif %}
               {% if lead.email %}
               <br><span style="font-size:11px;color:#94A3B8;">{{ lead.email }}</span>
               {% endif %}
