@@ -78,7 +78,7 @@
         </span>
         <span id="selected-count" style="font-size:12px;color:var(--brand-orange);display:none;"></span>
       </div>
-      <div class="d-flex gap-2 align-items-center flex-wrap" id="bulk-actions" style="display:none!important;">
+      <div class="d-flex gap-2 align-items-center flex-wrap" id="bulk-actions" style="display:none;">
         {% if request.user.is_staff %}
         <select name="agent_id" class="form-select form-select-sm" style="width:160px;">
           <option value="">Assign to agent…</option>
