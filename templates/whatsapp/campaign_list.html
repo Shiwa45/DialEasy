@@ -1,0 +1,123 @@
+{% extends "base/base.html" %}
+{% block title %}Bulk Campaigns — DialEasy CRM{% endblock %}
+{% block page_title %}Bulk WhatsApp Campaigns{% endblock %}
+{% block page_sub %}Send personalised WhatsApp messages to lead segments{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex gap-2">
+    {% for s, label in status_choices %}
+    <a href="?status={{ s }}" class="btn btn-sm {% if current_status == s %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ label }}</a>
+    {% endfor %}
+    <a href="?" class="btn btn-sm {% if not current_status %}btn-primary{% else %}btn-outline-secondary{% endif %}">All</a>
+  </div>
+  <a href="{% url 'leads:campaign_create' %}" class="btn btn-success">
+    <i class="bi bi-send-plus"></i> New Campaign
+  </a>
+</div>
+
+{% if not campaigns %}
+<div class="crm-card text-center py-5">
+  <i class="bi bi-megaphone" style="font-size:48px;color:#94A3B8;display:block;margin-bottom:16px;"></i>
+  <h5 style="font-weight:700;color:#0F172A;">No campaigns yet</h5>
+  <p class="text-muted" style="font-size:13px;">Create your first bulk WhatsApp campaign to reach your leads at scale.</p>
+  <a href="{% url 'leads:campaign_create' %}" class="btn btn-primary mt-2">Create Campaign</a>
+</div>
+{% else %}
+<div class="crm-card p-0">
+  <table class="crm-table">
+    <thead>
+      <tr>
+        <th>Campaign</th>
+        <th>Provider</th>
+        <th>Status</th>
+        <th>Audience</th>
+        <th>Progress</th>
+        <th>Scheduled</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in campaigns %}
+      <tr>
+        <td>
+          <a href="{% url 'leads:campaign_detail' c.id %}" style="font-weight:600;color:#0F172A;text-decoration:none;">{{ c.name }}</a>
+          {% if c.description %}
+          <br><span style="font-size:11px;color:#94A3B8;">{{ c.description|truncatechars:60 }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if c.provider %}
+          <span style="font-size:12px;color:#475569;">
+            <i class="bi bi-broadcast"></i> {{ c.provider.name }}
+            <br><span style="font-size:10px;color:#94A3B8;">{{ c.provider.get_provider_display }}</span>
+          </span>
+          {% else %}
+          <span class="text-muted" style="font-size:11px;">Default</span>
+          {% endif %}
+        </td>
+        <td>
+          {% with s=c.status %}
+          <span class="badge-status
+            {% if s == 'completed' %}badge-converted
+            {% elif s == 'running' %}badge-contacted
+            {% elif s == 'queued' %}badge-callback
+            {% elif s == 'paused' %}badge-new
+            {% elif s == 'failed' or s == 'cancelled' %}badge-lost
+            {% else %}badge-new{% endif %}">
+            {{ c.get_status_display }}
+          </span>
+          {% endwith %}
+        </td>
+        <td style="font-size:12px;">
+          <strong>{{ c.total_leads }}</strong> leads
+          {% if c.lead_filter %}
+          <br><span style="font-size:10px;color:#94A3B8;">
+            {% if c.lead_filter.status %}{{ c.lead_filter.status }} · {% endif %}
+            {% if c.lead_filter.source %}{{ c.lead_filter.source }}{% endif %}
+          </span>
+          {% endif %}
+        </td>
+        <td style="min-width:140px;">
+          {% if c.total_leads > 0 %}
+          {% widthratio c.sent_count c.total_leads 100 as pct %}
+          <div style="font-size:11px;color:#64748B;margin-bottom:3px;">
+            {{ c.sent_count }}/{{ c.total_leads }} sent
+            {% if c.failed_count %} · <span style="color:#EF4444;">{{ c.failed_count }} failed</span>{% endif %}
+          </div>
+          <div style="background:#E2E8F0;border-radius:4px;height:6px;">
+            <div style="background:#22C55E;width:{{ pct }}%;height:6px;border-radius:4px;"></div>
+          </div>
+          {% else %}—{% endif %}
+        </td>
+        <td style="font-size:11px;color:#64748B;">
+          {% if c.scheduled_at %}{{ c.scheduled_at|date:"d M Y, H:i" }}{% else %}—{% endif %}
+        </td>
+        <td>
+          <div class="d-flex gap-1">
+            <a href="{% url 'leads:campaign_detail' c.id %}" class="btn btn-sm btn-outline-primary" title="View">
+              <i class="bi bi-bar-chart-line"></i>
+            </a>
+            {% if c.status == 'running' or c.status == 'queued' %}
+            <form method="post" action="{% url 'leads:campaign_pause' c.id %}">{% csrf_token %}
+              <button class="btn btn-sm btn-outline-warning" title="Pause"><i class="bi bi-pause-fill"></i></button>
+            </form>
+            {% elif c.status == 'paused' %}
+            <form method="post" action="{% url 'leads:campaign_resume' c.id %}">{% csrf_token %}
+              <button class="btn btn-sm btn-outline-success" title="Resume"><i class="bi bi-play-fill"></i></button>
+            </form>
+            {% endif %}
+            {% if c.status not in 'completed,cancelled' %}
+            <form method="post" action="{% url 'leads:campaign_cancel' c.id %}" onsubmit="return confirm('Cancel this campaign?');">{% csrf_token %}
+              <button class="btn btn-sm btn-outline-danger" title="Cancel"><i class="bi bi-x-lg"></i></button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

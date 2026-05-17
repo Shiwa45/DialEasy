@@ -140,7 +140,7 @@ class ClientAdmin(admin.ModelAdmin):
     list_display = [
         'name', 'schema_name', 'owner_email',
         'current_plan_display', 'subscription_status',
-        'agent_limit_display',
+        'agent_limit_display', 'feature_addons_display',
         'is_active', 'created_at'
     ]
     list_filter = ['is_active', 'created_at']
@@ -153,6 +153,8 @@ class ClientAdmin(admin.ModelAdmin):
             return self.readonly_fields + ['schema_name']
         return self.readonly_fields
 
+    filter_horizontal = ['extra_features']
+
     fieldsets = (
         ('Tenant Information', {
             'fields': ('name', 'schema_name', 'owner_email', 'phone', 'address', 'logo', 'is_active')
@@ -162,6 +164,14 @@ class ClientAdmin(admin.ModelAdmin):
             'description': (
                 'Set a custom agent limit for this tenant that overrides the plan\'s default. '
                 'Leave blank to use the plan limit. Set -1 for unlimited.'
+            ),
+        }),
+        ('Feature Add-ons', {
+            'fields': ('extra_features',),
+            'description': (
+                'Grant specific features directly to this tenant, on top of their plan. '
+                'Use this to enable premium features (e.g. bulk_whatsapp) per tenant '
+                'without upgrading their entire plan.'
             ),
         }),
         ('Timestamps', {
@@ -194,6 +204,17 @@ class ClientAdmin(admin.ModelAdmin):
             color, sub.get_status_display()
         )
     subscription_status.short_description = 'Subscription'
+
+    def feature_addons_display(self, obj):
+        addons = list(obj.extra_features.filter(is_active=True).values_list('slug', flat=True))
+        if not addons:
+            return format_html('<span style="color:#94A3B8;font-size:11px;">none</span>')
+        badges = ' '.join(
+            format_html('<span style="background:#E0F2FE;color:#0369A1;padding:1px 6px;border-radius:10px;font-size:10px;">{}</span>', s)
+            for s in addons
+        )
+        return format_html(badges)
+    feature_addons_display.short_description = 'Add-on Features'
 
     def agent_limit_display(self, obj):
         limit = obj.effective_agent_limit

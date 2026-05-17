@@ -1,0 +1,168 @@
+{% extends "base/base.html" %}
+{% block title %}WhatsApp Providers — DialEasy CRM{% endblock %}
+{% block page_title %}WhatsApp Providers{% endblock %}
+{% block page_sub %}Manage API credentials for bulk messaging{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <p class="text-muted mb-0" style="font-size:13px;">
+    Configure one or more providers. Set one as <strong>default</strong> to use it for new campaigns automatically.
+  </p>
+  <button class="btn btn-success" onclick="showAddForm()">
+    <i class="bi bi-plus-lg"></i> Add Provider
+  </button>
+</div>
+
+<!-- Add Provider Form (hidden by default) -->
+<div class="crm-card mb-3" id="addProviderCard" style="display:none;">
+  <div class="crm-card-title mb-3"><i class="bi bi-broadcast-pin"></i> Add New Provider</div>
+  <form method="post" action="{% url 'leads:provider_create' %}">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label fw-semibold" style="font-size:13px;">Provider Name <span class="text-danger">*</span></label>
+        <input type="text" name="name" class="form-control" placeholder="e.g. Main Meta Account" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-semibold" style="font-size:13px;">Provider Type <span class="text-danger">*</span></label>
+        <select name="provider" class="form-select" required onchange="showFields(this.value)">
+          <option value="">— Select —</option>
+          {% for val, label in provider_choices %}
+          <option value="{{ val }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <!-- Meta fields -->
+    <div id="fields_meta" class="row g-3 mt-1" style="display:none;">
+      <div class="col-md-6"><label class="form-label" style="font-size:13px;">Phone Number ID</label>
+        <input type="text" name="meta_phone_number_id" class="form-control" placeholder="1234567890"></div>
+      <div class="col-md-6"><label class="form-label" style="font-size:13px;">Access Token</label>
+        <input type="password" name="meta_access_token" class="form-control" placeholder="EAAxxxxx..."></div>
+      <div class="col-md-6"><label class="form-label" style="font-size:13px;">Webhook Verify Token</label>
+        <input type="text" name="meta_verify_token" class="form-control" placeholder="my_verify_token"></div>
+    </div>
+
+    <!-- Twilio fields -->
+    <div id="fields_twilio" class="row g-3 mt-1" style="display:none;">
+      <div class="col-md-4"><label class="form-label" style="font-size:13px;">Account SID</label>
+        <input type="text" name="twilio_account_sid" class="form-control" placeholder="ACxxxx"></div>
+      <div class="col-md-4"><label class="form-label" style="font-size:13px;">Auth Token</label>
+        <input type="password" name="twilio_auth_token" class="form-control"></div>
+      <div class="col-md-4"><label class="form-label" style="font-size:13px;">From Number</label>
+        <input type="text" name="twilio_from_number" class="form-control" placeholder="whatsapp:+14155238886"></div>
+    </div>
+
+    <!-- WATI fields -->
+    <div id="fields_wati" class="row g-3 mt-1" style="display:none;">
+      <div class="col-md-6"><label class="form-label" style="font-size:13px;">API Endpoint</label>
+        <input type="url" name="wati_api_endpoint" class="form-control" placeholder="https://live-mt-server.wati.io/api"></div>
+      <div class="col-md-6"><label class="form-label" style="font-size:13px;">API Key</label>
+        <input type="password" name="wati_api_key" class="form-control"></div>
+    </div>
+
+    <!-- AiSensy fields -->
+    <div id="fields_aisensy" class="row g-3 mt-1" style="display:none;">
+      <div class="col-md-6"><label class="form-label" style="font-size:13px;">API Key</label>
+        <input type="password" name="aisensy_api_key" class="form-control" placeholder="AiSensy API key"></div>
+    </div>
+
+    <!-- Interakt fields -->
+    <div id="fields_interakt" class="row g-3 mt-1" style="display:none;">
+      <div class="col-md-6"><label class="form-label" style="font-size:13px;">API Key</label>
+        <input type="password" name="interakt_api_key" class="form-control" placeholder="Interakt API key"></div>
+    </div>
+
+    <div class="d-flex gap-2 mt-3">
+      <div class="form-check me-2">
+        <input class="form-check-input" type="checkbox" name="is_default" id="isDefault">
+        <label class="form-check-label" for="isDefault" style="font-size:13px;">Set as default provider</label>
+      </div>
+      <div class="ms-auto d-flex gap-2">
+        <button type="button" class="btn btn-outline-secondary" onclick="hideAddForm()">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Save Provider</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Provider list -->
+{% if providers %}
+<div class="row g-3">
+  {% for p in providers %}
+  <div class="col-md-6">
+    <div class="crm-card" style="border:{% if p.is_default %}2px solid #22C55E{% else %}1px solid #E2E8F0{% endif %};">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <div>
+          <span style="font-weight:700;font-size:14px;color:#0F172A;">{{ p.name }}</span>
+          {% if p.is_default %}<span class="badge bg-success ms-2" style="font-size:10px;">DEFAULT</span>{% endif %}
+          {% if not p.is_active %}<span class="badge bg-secondary ms-1" style="font-size:10px;">INACTIVE</span>{% endif %}
+        </div>
+        <span style="font-size:12px;color:#64748B;">{{ p.get_provider_display }}</span>
+      </div>
+
+      {% if p.provider == 'meta' %}
+      <div style="font-size:12px;color:#64748B;">Phone ID: {{ p.meta_phone_number_id|default:"—" }}</div>
+      {% elif p.provider == 'twilio' %}
+      <div style="font-size:12px;color:#64748B;">SID: {{ p.twilio_account_sid|default:"—" }} · From: {{ p.twilio_from_number|default:"—" }}</div>
+      {% elif p.provider == 'wati' %}
+      <div style="font-size:12px;color:#64748B;">Endpoint: {{ p.wati_api_endpoint|default:"—" }}</div>
+      {% elif p.provider in 'aisensy,interakt' %}
+      <div style="font-size:12px;color:#64748B;">API key: ••••••••</div>
+      {% endif %}
+
+      <div class="d-flex gap-2 mt-3">
+        <form method="post" action="{% url 'leads:provider_test' p.id %}">{% csrf_token %}
+          <button class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-wifi"></i> Test Connection
+          </button>
+        </form>
+        {% if not p.is_default %}
+        <form method="post" action="{% url 'leads:provider_set_default' p.id %}">{% csrf_token %}
+          <button class="btn btn-sm btn-outline-success">Set Default</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{% url 'leads:provider_delete' p.id %}" onsubmit="return confirm('Delete this provider?');">{% csrf_token %}
+          <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+        </form>
+      </div>
+
+      {% if p.test_result %}
+      <div class="alert {% if p.test_ok %}alert-success{% else %}alert-danger{% endif %} py-1 mt-2 mb-0" style="font-size:12px;">
+        <i class="bi {% if p.test_ok %}bi-check-circle{% else %}bi-x-circle{% endif %}"></i>
+        {{ p.test_result }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="crm-card text-center py-5">
+  <i class="bi bi-broadcast" style="font-size:48px;color:#94A3B8;display:block;margin-bottom:16px;"></i>
+  <h5 style="font-weight:700;color:#0F172A;">No providers configured</h5>
+  <p class="text-muted" style="font-size:13px;max-width:400px;margin:8px auto 0;">
+    Add a WhatsApp provider to start sending bulk campaigns.
+    Supports Meta Cloud API, Twilio, WATI, AiSensy, and Interakt.
+  </p>
+  <button class="btn btn-primary mt-3" onclick="showAddForm()">Add First Provider</button>
+</div>
+{% endif %}
+
+<script>
+function showAddForm() {
+  document.getElementById('addProviderCard').style.display = '';
+  document.getElementById('addProviderCard').scrollIntoView({behavior:'smooth'});
+}
+function hideAddForm() {
+  document.getElementById('addProviderCard').style.display = 'none';
+}
+function showFields(provider) {
+  ['meta','twilio','wati','aisensy','interakt'].forEach(p => {
+    const el = document.getElementById(`fields_${p}`);
+    if (el) el.style.display = p === provider ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

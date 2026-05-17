@@ -14,6 +14,66 @@ from django.utils import timezone
 from leads.models import Lead
 
 
+# ─── Provider Configuration ───────────────────────────────────────────────────
+
+class WAProvider(models.Model):
+    """
+    Per-tenant WhatsApp provider credentials.
+    Supports Meta Cloud API, Twilio, WATI, AiSensy, and Interakt.
+    Only one provider can be marked is_default=True at a time.
+    """
+    PROVIDER_CHOICES = [
+        ('meta',     'Meta (WhatsApp Cloud API)'),
+        ('twilio',   'Twilio WhatsApp'),
+        ('wati',     'WATI'),
+        ('aisensy',  'AiSensy'),
+        ('interakt', 'Interakt'),
+    ]
+
+    name = models.CharField(max_length=100, help_text='Friendly label, e.g. "Main Meta Account"')
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
+    is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False, help_text='Used for new campaigns when no provider is selected')
+
+    # ─── Meta ───────────────────────────────────────────────────────
+    meta_phone_number_id = models.CharField(max_length=200, blank=True)
+    meta_access_token = models.TextField(blank=True)
+    meta_verify_token = models.CharField(max_length=200, blank=True)
+
+    # ─── Twilio ─────────────────────────────────────────────────────
+    twilio_account_sid = models.CharField(max_length=200, blank=True)
+    twilio_auth_token = models.CharField(max_length=200, blank=True)
+    twilio_from_number = models.CharField(max_length=50, blank=True,
+        help_text='Format: whatsapp:+14155238886')
+
+    # ─── WATI ───────────────────────────────────────────────────────
+    wati_api_endpoint = models.URLField(max_length=300, blank=True,
+        help_text='e.g. https://live-mt-server.wati.io/api')
+    wati_api_key = models.TextField(blank=True)
+
+    # ─── AiSensy ────────────────────────────────────────────────────
+    aisensy_api_key = models.TextField(blank=True)
+
+    # ─── Interakt ───────────────────────────────────────────────────
+    interakt_api_key = models.TextField(blank=True)
+
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,
+        related_name='wa_providers')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-is_default', 'name']
+
+    def __str__(self):
+        return f'{self.name} ({self.get_provider_display()})'
+
+    def save(self, *args, **kwargs):
+        if self.is_default:
+            WAProvider.objects.exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+
 # ─── Conversation ─────────────────────────────────────────────────────────────
 
 class WAConversation(models.Model):
@@ -247,8 +307,8 @@ class WATemplate(models.Model):
 class WABroadcast(models.Model):
     """
     A bulk WhatsApp broadcast campaign sent to a segment of leads.
-    Uses templates only (required by Meta for broadcast messages).
-    Rate-limited: processed by Celery, ~30 msgs/min by default.
+    Supports template and text messages across multiple providers.
+    Rate-limited: processed by management command (30 msgs/batch) or Celery.
     """
     STATUS_CHOICES = [
         ('draft', 'Draft'),
@@ -256,23 +316,45 @@ class WABroadcast(models.Model):
         ('running', 'Running'),
         ('completed', 'Completed'),
         ('paused', 'Paused'),
+        ('cancelled', 'Cancelled'),
         ('failed', 'Failed'),
     ]
+    MESSAGE_TYPE_CHOICES = [
+        ('template', 'Template Message'),
+        ('text', 'Plain Text Message'),
+    ]
 
-    name = models.CharField(max_length=200, help_text='Internal name for this broadcast')
-    template = models.ForeignKey(WATemplate, on_delete=models.PROTECT, related_name='broadcasts')
+    name = models.CharField(max_length=200, help_text='Campaign name shown in dashboard')
+    description = models.TextField(blank=True, help_text='Optional internal notes about this campaign')
+    message_type = models.CharField(max_length=20, choices=MESSAGE_TYPE_CHOICES, default='template')
+
+    # Template message
+    template = models.ForeignKey(WATemplate, on_delete=models.PROTECT,
+        related_name='broadcasts', null=True, blank=True)
+
+    # Text message (used when message_type='text')
+    text_body = models.TextField(blank=True,
+        help_text='Plain text body. Supports {{name}}, {{company}}, {{phone}} placeholders.')
+
+    # Provider — null falls back to default provider
+    provider = models.ForeignKey('WAProvider', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='broadcasts',
+        help_text='WhatsApp provider to use. Leave blank to use the default provider.')
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
 
-    # Lead filter snapshot stored at time of creation
-    # (serialised QuerySet filters so we don't re-evaluate at send time)
+    # Lead filter snapshot at creation time
     lead_filter = models.JSONField(
         default=dict,
-        help_text='Serialised filter: {"status": "interested", "source": "Meta"}. '
-                  'Applied at time of scheduling.'
+        help_text='{"status": "interested", "source": "Meta", "assigned_agent_id": 5}'
     )
+
+    # Progress counters
     total_leads = models.IntegerField(default=0)
     sent_count = models.IntegerField(default=0)
     delivered_count = models.IntegerField(default=0)
+    read_count = models.IntegerField(default=0)
+    replied_count = models.IntegerField(default=0)
     failed_count = models.IntegerField(default=0)
     opted_out_skipped = models.IntegerField(default=0)
 
@@ -288,7 +370,26 @@ class WABroadcast(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.name} ({self.status}) — {self.sent_count}/{self.total_leads}"
+        return f'{self.name} ({self.status}) — {self.sent_count}/{self.total_leads}'
+
+    @property
+    def delivery_rate(self):
+        return round(self.delivered_count / self.sent_count * 100, 1) if self.sent_count else 0
+
+    @property
+    def read_rate(self):
+        return round(self.read_count / self.delivered_count * 100, 1) if self.delivered_count else 0
+
+    def render_text_body(self, lead) -> str:
+        """Substitute {{name}}, {{company}}, {{phone}} in text_body."""
+        text = self.text_body
+        for placeholder, value in {
+            '{{name}}': lead.name,
+            '{{company}}': lead.company or '',
+            '{{phone}}': lead.phone,
+        }.items():
+            text = text.replace(placeholder, str(value))
+        return text
 
 
 class WABroadcastRecipient(models.Model):

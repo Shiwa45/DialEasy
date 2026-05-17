@@ -7,6 +7,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django_tenants.models import TenantMixin, DomainMixin
+from django_tenants.utils import schema_context, get_public_schema_name
 from django.utils import timezone
 
 
@@ -119,6 +120,15 @@ class Client(TenantMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Per-tenant feature add-ons — super admin can grant specific features
+    # directly to a tenant without changing their plan.
+    extra_features = models.ManyToManyField(
+        'Feature',
+        blank=True,
+        related_name='direct_tenants',
+        help_text='Features granted directly to this tenant (in addition to their plan).',
+    )
+
     # Super-admin override: set a custom agent limit for this tenant, regardless of plan.
     # Leave blank (null) to fall back to the plan's max_agents value.
     max_agents_override = models.IntegerField(
@@ -213,7 +223,8 @@ class Client(TenantMixin):
 
     @property
     def active_subscription(self):
-        return self.subscriptions.filter(is_active=True).select_related('plan').first()
+        with schema_context(get_public_schema_name()):
+            return self.subscriptions.filter(is_active=True).select_related('plan').first()
 
     @property
     def current_plan(self):
@@ -235,18 +246,25 @@ class Client(TenantMixin):
         return 5  # Sensible fallback when no plan is assigned
 
     def has_feature(self, feature_slug: str) -> bool:
-        """Check if this tenant's active plan includes the given feature slug."""
+        """Check if this tenant has a feature — via plan OR direct add-on."""
+        # extra_features M2M lives in the public schema; force that schema context
+        # so the junction table is found even when running inside a tenant schema.
+        with schema_context(get_public_schema_name()):
+            if self.extra_features.filter(slug=feature_slug, is_active=True).exists():
+                return True
         plan = self.current_plan
         if plan is None:
             return False
         return feature_slug in plan.get_feature_slugs()
 
     def get_enabled_features(self):
-        """Return list of feature slugs enabled for this tenant."""
+        """Return list of all feature slugs enabled for this tenant."""
+        with schema_context(get_public_schema_name()):
+            slugs = set(self.extra_features.filter(is_active=True).values_list('slug', flat=True))
         plan = self.current_plan
-        if plan is None:
-            return []
-        return list(plan.get_feature_slugs())
+        if plan is not None:
+            slugs |= plan.get_feature_slugs()
+        return list(slugs)
 
 
 # ─── Domain ───────────────────────────────────────────────────────────────────

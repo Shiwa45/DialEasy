@@ -13,9 +13,10 @@ from django.db.models import Q
 
 from leads.models import Lead
 from leads.whatsapp_models import (
-    WAConversation, WAMessage, WATemplate, WABroadcast, WABroadcastRecipient, WAAutoReply
+    WAConversation, WAMessage, WATemplate, WABroadcast, WABroadcastRecipient, WAAutoReply, WAProvider
 )
 from leads.whatsapp_service_v2 import send_and_log, send_template_and_log
+from leads.whatsapp_providers import get_provider, get_default_provider, PROVIDER_CHOICES
 from tenants.feature_gates import FeatureRequiredMixin
 
 
@@ -291,76 +292,253 @@ def template_preview(request, template_id):
     return Response({'rendered_body': rendered, 'components': tmpl.build_components(lead, request.user) if lead else []})
 
 
+# ─── Provider helpers ─────────────────────────────────────────────────────────
+
+def _serialize_provider(p: WAProvider) -> dict:
+    return {
+        'id': p.id,
+        'name': p.name,
+        'provider': p.provider,
+        'provider_display': p.get_provider_display(),
+        'is_active': p.is_active,
+        'is_default': p.is_default,
+        # Return masked credentials for display only
+        'meta_phone_number_id': p.meta_phone_number_id,
+        'twilio_account_sid': p.twilio_account_sid,
+        'twilio_from_number': p.twilio_from_number,
+        'wati_api_endpoint': p.wati_api_endpoint,
+        'created_at': p.created_at,
+    }
+
+
+# ─── Provider endpoints ───────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def provider_list(request):
+    """
+    GET  /api/whatsapp/providers/  — list configured providers (staff)
+    POST /api/whatsapp/providers/  — add a new provider (staff)
+    """
+    if not request.user.is_staff:
+        return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == 'GET':
+        providers = WAProvider.objects.all()
+        return Response([_serialize_provider(p) for p in providers])
+
+    d = request.data
+    provider = WAProvider(
+        name=d.get('name', ''),
+        provider=d.get('provider', ''),
+        is_active=d.get('is_active', True),
+        is_default=d.get('is_default', False),
+        meta_phone_number_id=d.get('meta_phone_number_id', ''),
+        meta_access_token=d.get('meta_access_token', ''),
+        meta_verify_token=d.get('meta_verify_token', ''),
+        twilio_account_sid=d.get('twilio_account_sid', ''),
+        twilio_auth_token=d.get('twilio_auth_token', ''),
+        twilio_from_number=d.get('twilio_from_number', ''),
+        wati_api_endpoint=d.get('wati_api_endpoint', ''),
+        wati_api_key=d.get('wati_api_key', ''),
+        aisensy_api_key=d.get('aisensy_api_key', ''),
+        interakt_api_key=d.get('interakt_api_key', ''),
+        created_by=request.user,
+    )
+    if not provider.name or not provider.provider:
+        return Response({'error': 'name and provider are required'}, status=status.HTTP_400_BAD_REQUEST)
+    provider.save()
+    return Response(_serialize_provider(provider), status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def provider_detail(request, provider_id):
+    """GET/PATCH/DELETE /api/whatsapp/providers/{id}/"""
+    if not request.user.is_staff:
+        return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
+    p = get_object_or_404(WAProvider, id=provider_id)
+
+    if request.method == 'GET':
+        return Response(_serialize_provider(p))
+
+    if request.method == 'PATCH':
+        allowed = [
+            'name', 'is_active', 'is_default',
+            'meta_phone_number_id', 'meta_access_token', 'meta_verify_token',
+            'twilio_account_sid', 'twilio_auth_token', 'twilio_from_number',
+            'wati_api_endpoint', 'wati_api_key',
+            'aisensy_api_key', 'interakt_api_key',
+        ]
+        for field in allowed:
+            if field in request.data:
+                setattr(p, field, request.data[field])
+        p.save()
+        return Response(_serialize_provider(p))
+
+    # DELETE
+    p.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def provider_test(request, provider_id):
+    """POST /api/whatsapp/providers/{id}/test/ — test connectivity"""
+    if not request.user.is_staff:
+        return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
+    p = get_object_or_404(WAProvider, id=provider_id)
+    try:
+        impl = get_provider(p)
+        ok, message = impl.test_connection()
+        return Response({'ok': ok, 'message': message})
+    except Exception as e:
+        return Response({'ok': False, 'message': str(e)})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def provider_choices(request):
+    """GET /api/whatsapp/provider-choices/ — list available provider types"""
+    return Response([{'value': v, 'label': l} for v, l in PROVIDER_CHOICES])
+
+
+# ─── Broadcast / Campaign helpers ─────────────────────────────────────────────
+
+def _build_lead_qs(lead_filter: dict):
+    qs = Lead.objects.all()
+    if lead_filter.get('status'):
+        qs = qs.filter(status=lead_filter['status'])
+    if lead_filter.get('source'):
+        qs = qs.filter(source__icontains=lead_filter['source'])
+    if lead_filter.get('assigned_agent_id'):
+        qs = qs.filter(assigned_agent_id=lead_filter['assigned_agent_id'])
+    if lead_filter.get('tags'):
+        qs = qs.filter(tags__icontains=lead_filter['tags'])
+    # Exclude opted-out leads
+    opted_out = WAConversation.objects.filter(is_opted_out=True).values_list('lead_id', flat=True)
+    return qs.exclude(id__in=opted_out)
+
+
+def _serialize_broadcast(b: WABroadcast) -> dict:
+    return {
+        'id': b.id,
+        'name': b.name,
+        'description': b.description,
+        'status': b.status,
+        'status_display': b.get_status_display(),
+        'message_type': b.message_type,
+        'template': {'id': b.template.id, 'name': b.template.display_name} if b.template else None,
+        'text_body': b.text_body,
+        'provider': {'id': b.provider.id, 'name': b.provider.name, 'provider': b.provider.provider} if b.provider else None,
+        'lead_filter': b.lead_filter,
+        'total_leads': b.total_leads,
+        'sent_count': b.sent_count,
+        'delivered_count': b.delivered_count,
+        'read_count': b.read_count,
+        'replied_count': b.replied_count,
+        'failed_count': b.failed_count,
+        'opted_out_skipped': b.opted_out_skipped,
+        'delivery_rate': b.delivery_rate,
+        'read_rate': b.read_rate,
+        'scheduled_at': b.scheduled_at,
+        'started_at': b.started_at,
+        'completed_at': b.completed_at,
+        'created_by': b.created_by.get_full_name() if b.created_by else None,
+        'created_at': b.created_at,
+    }
+
+
 # ─── Broadcast endpoints ─────────────────────────────────────────────────────
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def broadcast_list(request):
     """
-    GET  /api/whatsapp/broadcasts/  — list broadcasts (staff only)
-    POST /api/whatsapp/broadcasts/  — create & queue a broadcast
+    GET  /api/whatsapp/broadcasts/  — list campaigns (staff only)
+    POST /api/whatsapp/broadcasts/  — create & queue a campaign
     """
     if not request.user.is_staff:
         return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
-        broadcasts = WABroadcast.objects.select_related('template', 'created_by').order_by('-created_at')[:50]
-        return Response([{
-            'id': b.id, 'name': b.name, 'status': b.status,
-            'template': b.template.display_name,
-            'total_leads': b.total_leads, 'sent_count': b.sent_count,
-            'delivered_count': b.delivered_count, 'failed_count': b.failed_count,
-            'created_at': b.created_at, 'scheduled_at': b.scheduled_at,
-        } for b in broadcasts])
+        qs = WABroadcast.objects.select_related('template', 'provider', 'created_by').order_by('-created_at')
+        # Filter by status
+        status_f = request.query_params.get('status')
+        if status_f:
+            qs = qs.filter(status=status_f)
+        return Response([_serialize_broadcast(b) for b in qs[:100]])
 
-    # Create broadcast
+    # ─── Create campaign ─────────────────────────────────────────────
     data = request.data
-    template_id = data.get('template_id')
+    message_type = data.get('message_type', 'template')
     lead_filter = data.get('lead_filter', {})
 
-    try:
-        template = WATemplate.objects.get(id=template_id, is_active=True, status='approved')
-    except WATemplate.DoesNotExist:
-        return Response({'error': 'Template not found or not approved'}, status=status.HTTP_400_BAD_REQUEST)
+    template = None
+    text_body = ''
 
-    # Evaluate lead count
-    lead_qs = Lead.objects.all()
-    if lead_filter.get('status'):
-        lead_qs = lead_qs.filter(status=lead_filter['status'])
-    if lead_filter.get('source'):
-        lead_qs = lead_qs.filter(source__icontains=lead_filter['source'])
-    if lead_filter.get('assigned_agent_id'):
-        lead_qs = lead_qs.filter(assigned_agent_id=lead_filter['assigned_agent_id'])
+    if message_type == 'template':
+        template_id = data.get('template_id')
+        if not template_id:
+            return Response({'error': 'template_id required for template campaigns'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            template = WATemplate.objects.get(id=template_id, is_active=True, status='approved')
+        except WATemplate.DoesNotExist:
+            return Response({'error': 'Template not found or not approved'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        text_body = data.get('text_body', '').strip()
+        if not text_body:
+            return Response({'error': 'text_body required for text campaigns'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Exclude opted-out leads
-    opted_out_ids = WAConversation.objects.filter(is_opted_out=True).values_list('lead_id', flat=True)
-    lead_qs = lead_qs.exclude(id__in=opted_out_ids)
+    # Resolve provider
+    provider = None
+    provider_id = data.get('provider_id')
+    if provider_id:
+        provider = get_object_or_404(WAProvider, id=provider_id, is_active=True)
+    else:
+        provider = WAProvider.objects.filter(is_active=True, is_default=True).first() \
+            or WAProvider.objects.filter(is_active=True).first()
+
+    lead_qs = _build_lead_qs(lead_filter)
     total = lead_qs.count()
 
+    if total == 0:
+        return Response({'error': 'No eligible leads match the selected filter (all opted out or none found)'}, status=status.HTTP_400_BAD_REQUEST)
+
+    scheduled_at = data.get('scheduled_at')
     broadcast = WABroadcast.objects.create(
-        name=data.get('name', f'Broadcast {timezone.now().strftime("%Y-%m-%d")}'),
+        name=data.get('name', f'Campaign {timezone.now().strftime("%Y-%m-%d")}'),
+        description=data.get('description', ''),
+        message_type=message_type,
         template=template,
+        text_body=text_body,
+        provider=provider,
         lead_filter=lead_filter,
         total_leads=total,
-        status='queued',
-        scheduled_at=data.get('scheduled_at') or timezone.now(),
+        status='queued' if not scheduled_at else 'draft',
+        scheduled_at=scheduled_at or timezone.now(),
         created_by=request.user,
     )
 
-    # Create recipient records
-    WABroadcastRecipient.objects.bulk_create([
-        WABroadcastRecipient(broadcast=broadcast, lead=lead)
-        for lead in lead_qs.iterator()
-    ], batch_size=500)
-
-    # TODO: enqueue Celery task: process_broadcast.delay(broadcast.id)
-    # For now, mark as queued so it can be processed by the management command
+    WABroadcastRecipient.objects.bulk_create(
+        [WABroadcastRecipient(broadcast=broadcast, lead=lead) for lead in lead_qs.iterator()],
+        batch_size=500,
+    )
 
     return Response({
-        'id': broadcast.id, 'name': broadcast.name,
-        'status': broadcast.status, 'total_leads': total,
-        'message': f'Broadcast queued for {total} leads.'
+        **_serialize_broadcast(broadcast),
+        'message': f'Campaign created for {total} leads. Run "process_broadcasts" to send.',
     }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def broadcast_detail(request, broadcast_id):
+    """GET /api/whatsapp/broadcasts/{id}/"""
+    if not request.user.is_staff:
+        return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
+    b = get_object_or_404(WABroadcast, id=broadcast_id)
+    return Response(_serialize_broadcast(b))
 
 
 @api_view(['POST'])
@@ -369,7 +547,89 @@ def broadcast_pause(request, broadcast_id):
     """POST /api/whatsapp/broadcasts/{id}/pause/"""
     if not request.user.is_staff:
         return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
-    broadcast = get_object_or_404(WABroadcast, id=broadcast_id)
-    broadcast.status = 'paused'
-    broadcast.save(update_fields=['status'])
-    return Response({'status': 'paused'})
+    b = get_object_or_404(WABroadcast, id=broadcast_id)
+    if b.status not in ('queued', 'running'):
+        return Response({'error': f'Cannot pause a campaign with status "{b.status}"'}, status=status.HTTP_400_BAD_REQUEST)
+    b.status = 'paused'
+    b.save(update_fields=['status'])
+    return Response(_serialize_broadcast(b))
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def broadcast_resume(request, broadcast_id):
+    """POST /api/whatsapp/broadcasts/{id}/resume/"""
+    if not request.user.is_staff:
+        return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
+    b = get_object_or_404(WABroadcast, id=broadcast_id)
+    if b.status != 'paused':
+        return Response({'error': 'Only paused campaigns can be resumed'}, status=status.HTTP_400_BAD_REQUEST)
+    b.status = 'queued'
+    b.save(update_fields=['status'])
+    return Response(_serialize_broadcast(b))
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def broadcast_cancel(request, broadcast_id):
+    """POST /api/whatsapp/broadcasts/{id}/cancel/"""
+    if not request.user.is_staff:
+        return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
+    b = get_object_or_404(WABroadcast, id=broadcast_id)
+    if b.status in ('completed', 'cancelled'):
+        return Response({'error': f'Campaign is already {b.status}'}, status=status.HTTP_400_BAD_REQUEST)
+    b.status = 'cancelled'
+    b.save(update_fields=['status'])
+    return Response(_serialize_broadcast(b))
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def broadcast_recipients(request, broadcast_id):
+    """GET /api/whatsapp/broadcasts/{id}/recipients/ — paginated recipient list"""
+    if not request.user.is_staff:
+        return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
+    b = get_object_or_404(WABroadcast, id=broadcast_id)
+
+    qs = b.recipients.select_related('lead').order_by('id')
+    status_f = request.query_params.get('status')
+    if status_f:
+        qs = qs.filter(status=status_f)
+
+    page_size = min(int(request.query_params.get('page_size', 50)), 200)
+    offset = int(request.query_params.get('offset', 0))
+    total = qs.count()
+    recipients = qs[offset:offset + page_size]
+
+    return Response({
+        'count': total,
+        'offset': offset,
+        'page_size': page_size,
+        'results': [{
+            'id': r.id,
+            'lead': {'id': r.lead.id, 'name': r.lead.name, 'phone': r.lead.phone},
+            'status': r.status,
+            'wa_message_id': r.wa_message_id,
+            'error_message': r.error_message,
+            'sent_at': r.sent_at,
+        } for r in recipients],
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def broadcast_estimate(request):
+    """
+    GET /api/whatsapp/broadcasts/estimate/?status=interested&source=Meta
+    Returns estimated recipient count for a given filter (before creating campaign).
+    """
+    if not request.user.is_staff:
+        return Response({'error': 'Staff only'}, status=status.HTTP_403_FORBIDDEN)
+    lead_filter = {
+        'status': request.query_params.get('status'),
+        'source': request.query_params.get('source'),
+        'assigned_agent_id': request.query_params.get('assigned_agent_id'),
+    }
+    lead_filter = {k: v for k, v in lead_filter.items() if v}
+    count = _build_lead_qs(lead_filter).count()
+    return Response({'estimated_recipients': count, 'filter': lead_filter})

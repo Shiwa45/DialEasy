@@ -1,0 +1,82 @@
+{% extends "base/base.html" %}
+{% block title %}Edit Template — DialEasy CRM{% endblock %}
+{% block page_title %}Edit Template{% endblock %}
+{% block page_sub %}{{ tmpl.display_name }}{% endblock %}
+
+{% block content %}
+<div class="crm-card" style="max-width:860px;">
+  <div class="crm-card-title mb-3"><i class="bi bi-card-text"></i> Edit WhatsApp Template</div>
+  <form method="post">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label fw-semibold" style="font-size:13px;">Template Name (Meta) <span class="text-danger">*</span></label>
+        <input type="text" name="name" class="form-control" value="{{ tmpl.name }}" required>
+        <div class="mt-1" style="font-size:11px;color:#64748B;">Exact name from Meta Business Manager</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-semibold" style="font-size:13px;">Display Name <span class="text-danger">*</span></label>
+        <input type="text" name="display_name" class="form-control" value="{{ tmpl.display_name }}" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold" style="font-size:13px;">Category</label>
+        <select name="category" class="form-select">
+          {% for val, label in category_choices %}
+          <option value="{{ val }}" {% if tmpl.category == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold" style="font-size:13px;">Language</label>
+        <input type="text" name="language_code" class="form-control" value="{{ tmpl.language_code }}">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label fw-semibold" style="font-size:13px;">Body Text <span class="text-danger">*</span></label>
+        <textarea name="body_text" class="form-control" rows="5">{{ tmpl.body_text }}</textarea>
+        <div class="mt-1" style="font-size:11px;color:#64748B;">
+          Variables: <code>&#123;&#123;name&#125;&#125;</code> &nbsp; <code>&#123;&#123;company&#125;&#125;</code> &nbsp; <code>&#123;&#123;phone&#125;&#125;</code> &nbsp; <code>&#123;&#123;agent_name&#125;&#125;</code>
+        </div>
+      </div>
+
+      <div class="col-md-5">
+        <label class="form-label fw-semibold" style="font-size:13px;">Header Text <span class="text-muted fw-normal">(optional)</span></label>
+        <input type="text" name="header_text" class="form-control" value="{{ tmpl.header_text|default:'' }}">
+      </div>
+      <div class="col-md-5">
+        <label class="form-label fw-semibold" style="font-size:13px;">Footer Text <span class="text-muted fw-normal">(optional)</span></label>
+        <input type="text" name="footer_text" class="form-control" value="{{ tmpl.footer_text|default:'' }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold" style="font-size:13px;">Status</label>
+        <select name="status" class="form-select">
+          {% for val, label in status_choices %}
+          <option value="{{ val }}" {% if tmpl.status == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label fw-semibold" style="font-size:13px;">
+          Quick Reply Buttons <span class="text-muted fw-normal">(JSON, optional)</span>
+        </label>
+        <textarea name="buttons" class="form-control" rows="4" style="font-family:monospace;font-size:12px;"
+          placeholder='[{"type": "QUICK_REPLY", "text": "Yes"}, {"type": "QUICK_REPLY", "text": "No"}]'>{{ buttons_json }}</textarea>
+        <div class="mt-1" style="font-size:11px;color:#64748B;">Leave blank to remove all buttons.</div>
+      </div>
+
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="is_active" id="isActive" {% if tmpl.is_active %}checked{% endif %}>
+          <label class="form-check-label" for="isActive" style="font-size:13px;">Active (available for campaigns)</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4">
+      <a href="{% url 'leads:wa_template_list' %}" class="btn btn-outline-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary ms-auto"><i class="bi bi-save"></i> Save Changes</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,219 @@
+{% extends "base/base.html" %}
+{% block title %}New Campaign — DialEasy CRM{% endblock %}
+{% block page_title %}New Bulk Campaign{% endblock %}
+{% block page_sub %}Configure and launch a WhatsApp broadcast{% endblock %}
+
+{% block content %}
+<form method="post" id="campaignForm">
+  {% csrf_token %}
+  <div class="row g-3">
+
+    <!-- Left: Campaign Setup -->
+    <div class="col-lg-7">
+
+      <!-- Basic Info -->
+      <div class="crm-card mb-3">
+        <div class="crm-card-title mb-3"><i class="bi bi-pencil-square"></i> Campaign Details</div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">Campaign Name <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control" placeholder="e.g. June Follow-up Blast" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">Description</label>
+          <textarea name="description" class="form-control" rows="2" placeholder="Internal notes about this campaign…"></textarea>
+        </div>
+        <div class="mb-0">
+          <label class="form-label fw-semibold" style="font-size:13px;">Message Type <span class="text-danger">*</span></label>
+          <div class="d-flex gap-3">
+            <label class="d-flex align-items-center gap-2 cursor-pointer">
+              <input type="radio" name="message_type" value="template" checked onchange="toggleMessageType(this.value)">
+              <span style="font-size:13px;">Template Message <span class="text-muted">(required for cold outreach)</span></span>
+            </label>
+            <label class="d-flex align-items-center gap-2 cursor-pointer">
+              <input type="radio" name="message_type" value="text" onchange="toggleMessageType(this.value)">
+              <span style="font-size:13px;">Plain Text <span class="text-muted">(session window only)</span></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Template Message -->
+      <div class="crm-card mb-3" id="templateSection">
+        <div class="crm-card-title mb-3"><i class="bi bi-card-text"></i> WhatsApp Template</div>
+        {% if templates %}
+        <div class="mb-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">Select Approved Template <span class="text-danger">*</span></label>
+          <select name="template_id" class="form-select" id="templateSelect" onchange="previewTemplate(this.value)">
+            <option value="">— Choose template —</option>
+            {% for t in templates %}
+            <option value="{{ t.id }}" data-body="{{ t.body_text|escapejs }}" data-header="{{ t.header_text|default:''|escapejs }}" data-footer="{{ t.footer_text|default:''|escapejs }}">
+              {{ t.display_name }} ({{ t.language_code }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div id="templatePreview" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px;">
+          <div style="font-size:11px;font-weight:600;color:#16A34A;margin-bottom:6px;">PREVIEW</div>
+          <div id="previewHeader" style="font-weight:700;font-size:13px;color:#0F172A;margin-bottom:4px;"></div>
+          <div id="previewBody" style="font-size:13px;color:#334155;white-space:pre-wrap;"></div>
+          <div id="previewFooter" style="font-size:11px;color:#94A3B8;margin-top:4px;"></div>
+        </div>
+        {% else %}
+        <div class="alert alert-warning" style="font-size:13px;">
+          <i class="bi bi-exclamation-triangle"></i> No approved templates found.
+          <a href="{% url 'leads:integrations' %}">Configure templates</a> first.
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Text Message -->
+      <div class="crm-card mb-3" id="textSection" style="display:none;">
+        <div class="crm-card-title mb-3"><i class="bi bi-chat-text"></i> Message Text</div>
+        <div class="mb-2">
+          <label class="form-label fw-semibold" style="font-size:13px;">Message Body <span class="text-danger">*</span></label>
+          <textarea name="text_body" class="form-control" rows="5"
+            placeholder="Hi {{name}}, this is a message from our team…"></textarea>
+          <div class="mt-1" style="font-size:11px;color:#64748B;">
+            Personalization: <code>&#123;&#123;name&#125;&#125;</code> &nbsp; <code>&#123;&#123;company&#125;&#125;</code> &nbsp; <code>&#123;&#123;phone&#125;&#125;</code>
+          </div>
+        </div>
+      </div>
+
+      <!-- Provider & Schedule -->
+      <div class="crm-card mb-3">
+        <div class="crm-card-title mb-3"><i class="bi bi-broadcast"></i> Provider & Schedule</div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">WhatsApp Provider</label>
+          <select name="provider_id" class="form-select">
+            <option value="">— Use default provider —</option>
+            {% for p in providers %}
+            <option value="{{ p.id }}" {% if p.is_default %}selected{% endif %}>
+              {{ p.name }} ({{ p.get_provider_display }}){% if p.is_default %} ★{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          {% if not providers %}
+          <div class="mt-1" style="font-size:11px;color:#EF4444;">
+            <i class="bi bi-exclamation-circle"></i> No providers configured.
+            <a href="{% url 'leads:provider_settings' %}">Add a provider</a> first.
+          </div>
+          {% endif %}
+        </div>
+        <div>
+          <label class="form-label fw-semibold" style="font-size:13px;">Schedule</label>
+          <div class="d-flex gap-3">
+            <label class="d-flex align-items-center gap-2">
+              <input type="radio" name="schedule_type" value="now" checked onchange="toggleSchedule(this.value)">
+              <span style="font-size:13px;">Send immediately</span>
+            </label>
+            <label class="d-flex align-items-center gap-2">
+              <input type="radio" name="schedule_type" value="later" onchange="toggleSchedule(this.value)">
+              <span style="font-size:13px;">Schedule for later</span>
+            </label>
+          </div>
+          <div id="scheduleInput" class="mt-2" style="display:none;">
+            <input type="datetime-local" name="scheduled_at" class="form-control" style="max-width:260px;">
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right: Audience -->
+    <div class="col-lg-5">
+      <div class="crm-card mb-3 position-sticky" style="top:16px;">
+        <div class="crm-card-title mb-3"><i class="bi bi-people"></i> Audience Filter</div>
+        <p style="font-size:12px;color:#64748B;margin-bottom:12px;">Leave all filters blank to target all leads (minus opted-out).</p>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">Lead Status</label>
+          <select name="filter_status" class="form-select">
+            <option value="">All statuses</option>
+            {% for val, label in lead_statuses %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">Lead Source</label>
+          <input type="text" name="filter_source" class="form-control" placeholder="e.g. Meta, IndiaMart">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold" style="font-size:13px;">Assigned Agent</label>
+          <select name="filter_agent_id" class="form-select">
+            <option value="">All agents</option>
+            {% for agent in agents %}
+            <option value="{{ agent.id }}">{{ agent.get_full_name|default:agent.username }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <button type="button" class="btn btn-outline-primary btn-sm w-100 mb-3" onclick="estimateAudience()">
+          <i class="bi bi-calculator"></i> Estimate Audience Size
+        </button>
+        <div id="estimateResult" style="display:none;" class="alert alert-info py-2 text-center" style="font-size:13px;"></div>
+
+        <hr>
+
+        <div class="d-grid gap-2">
+          <button type="submit" class="btn btn-success" id="submitBtn">
+            <i class="bi bi-send"></i> Create Campaign
+          </button>
+          <a href="{% url 'leads:campaign_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</form>
+
+<script>
+function toggleMessageType(val) {
+  document.getElementById('templateSection').style.display = val === 'template' ? '' : 'none';
+  document.getElementById('textSection').style.display = val === 'text' ? '' : 'none';
+}
+
+function toggleSchedule(val) {
+  document.getElementById('scheduleInput').style.display = val === 'later' ? '' : 'none';
+}
+
+function previewTemplate(id) {
+  const sel = document.getElementById('templateSelect');
+  const opt = sel.options[sel.selectedIndex];
+  const preview = document.getElementById('templatePreview');
+  if (!id) { preview.style.display = 'none'; return; }
+  document.getElementById('previewHeader').textContent = opt.dataset.header || '';
+  document.getElementById('previewBody').textContent = opt.dataset.body || '';
+  document.getElementById('previewFooter').textContent = opt.dataset.footer || '';
+  preview.style.display = '';
+}
+
+function estimateAudience() {
+  const status = document.querySelector('[name=filter_status]').value;
+  const source = document.querySelector('[name=filter_source]').value;
+  const agentId = document.querySelector('[name=filter_agent_id]').value;
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (source) params.set('source', source);
+  if (agentId) params.set('assigned_agent_id', agentId);
+
+  const el = document.getElementById('estimateResult');
+  el.style.display = '';
+  el.textContent = 'Estimating…';
+
+  fetch(`/api/whatsapp/broadcasts/estimate/?${params}`)
+    .then(r => r.json())
+    .then(d => {
+      el.textContent = `≈ ${d.estimated_recipients} eligible leads will receive this campaign.`;
+    })
+    .catch(() => { el.textContent = 'Could not estimate — check your connection.'; });
+}
+
+document.getElementById('campaignForm').addEventListener('submit', function() {
+  document.getElementById('submitBtn').disabled = true;
+  document.getElementById('submitBtn').innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating…';
+});
+</script>
+{% endblock %}

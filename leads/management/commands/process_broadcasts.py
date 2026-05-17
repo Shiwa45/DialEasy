@@ -1,56 +1,99 @@
 # leads/management/commands/process_broadcasts.py
 # ─────────────────────────────────────────────────────────────────────────────
-# Processes queued WhatsApp broadcasts.
-# Run via cron or manually: python manage.py process_broadcasts
+# Processes queued WhatsApp broadcast campaigns across all tenants.
 #
-# Rate-limiting: WhatsApp Cloud API allows ~80 msgs/sec on tier 1.
-# This command sends in batches of 30 with a 1-second pause between batches.
-# For production use, replace with a Celery task.
+# Usage:
+#   python manage.py process_broadcasts               # all tenants
+#   python manage.py process_broadcasts --schema acme # specific tenant
+#   python manage.py process_broadcasts --broadcast-id 42
+#   python manage.py process_broadcasts --dry-run
+#
+# Rate-limiting: 30 messages/batch with a 1-second pause between batches.
+# For high volume, replace with Celery: process_broadcast.delay(broadcast.id)
 # ─────────────────────────────────────────────────────────────────────────────
 
 import time
 import logging
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from leads.whatsapp_models import WABroadcast, WABroadcastRecipient
-from leads.whatsapp_service_v2 import send_template_and_log, _get_wa_config
+from django_tenants.utils import schema_context, get_public_schema_name
 
 logger = logging.getLogger(__name__)
 BATCH_SIZE = 30
-BATCH_PAUSE = 1.0  # seconds between batches
+BATCH_PAUSE = 1.0
 
 
 class Command(BaseCommand):
-    help = 'Process queued WhatsApp broadcasts. Safe to run repeatedly.'
+    help = 'Process queued WhatsApp broadcasts across all tenants.'
 
     def add_arguments(self, parser):
+        parser.add_argument('--schema', type=str, help='Process a single tenant schema only')
         parser.add_argument('--broadcast-id', type=int, help='Process a specific broadcast by ID')
-        parser.add_argument('--dry-run', action='store_true', help='Show what would be sent without actually sending')
+        parser.add_argument('--dry-run', action='store_true', help='Preview sends without sending')
 
     def handle(self, *args, **options):
-        cfg = _get_wa_config()
-        if not cfg:
-            self.stderr.write(self.style.ERROR('WhatsApp not configured or inactive.'))
-            return
+        target_schema = options.get('schema')
 
-        qs = WABroadcast.objects.filter(
-            status__in=['queued', 'running'],
-            scheduled_at__lte=timezone.now(),
-        )
-        if options['broadcast_id']:
-            qs = qs.filter(id=options['broadcast_id'])
+        if target_schema:
+            self._run_for_schema(target_schema, options)
+        else:
+            # Iterate all active tenants
+            from tenants.models import Client
+            tenants = Client.objects.exclude(schema_name=get_public_schema_name())
+            if not tenants.exists():
+                self.stdout.write('No tenants found.')
+                return
+            for tenant in tenants:
+                if not tenant.is_active:
+                    continue
+                self.stdout.write(self.style.MIGRATE_LABEL(
+                    f'\n── Tenant: {tenant.name} ({tenant.schema_name}) ──'
+                ))
+                self._run_for_schema(tenant.schema_name, options)
 
-        if not qs.exists():
-            self.stdout.write('No broadcasts ready to process.')
-            return
+    def _run_for_schema(self, schema: str, options: dict):
+        with schema_context(schema):
+            from leads.whatsapp_models import WABroadcast
+            from leads.whatsapp_providers import get_provider, get_default_provider
 
-        for broadcast in qs:
-            self._process(broadcast, options['dry_run'])
+            qs = WABroadcast.objects.filter(
+                status__in=['queued', 'running'],
+                scheduled_at__lte=timezone.now(),
+            )
+            if options.get('broadcast_id'):
+                qs = qs.filter(id=options['broadcast_id'])
 
-    def _process(self, broadcast: WABroadcast, dry_run: bool):
+            if not qs.exists():
+                self.stdout.write(f'  No pending broadcasts in schema "{schema}".')
+                return
+
+            for broadcast in qs:
+                self._process(broadcast, options['dry_run'])
+
+    def _process(self, broadcast, dry_run: bool):
+        from leads.whatsapp_models import WABroadcastRecipient
+        from leads.whatsapp_providers import get_provider
+
         self.stdout.write(self.style.MIGRATE_HEADING(
-            f'\nProcessing broadcast #{broadcast.id}: {broadcast.name}'
+            f'\n  Campaign #{broadcast.id}: {broadcast.name} '
+            f'(type={broadcast.message_type}, provider={broadcast.provider})'
         ))
+
+        # Resolve provider
+        provider_model = broadcast.provider
+        if not provider_model:
+            from leads.whatsapp_providers import get_default_provider
+            provider_model = get_default_provider()
+        if not provider_model:
+            self.stderr.write(f'  ERROR: No WhatsApp provider configured for campaign #{broadcast.id}. Skipping.')
+            return
+
+        try:
+            provider_impl = get_provider(provider_model)
+        except Exception as e:
+            self.stderr.write(f'  ERROR: Cannot initialise provider: {e}')
+            return
 
         broadcast.status = 'running'
         broadcast.started_at = timezone.now()
@@ -61,17 +104,16 @@ class Command(BaseCommand):
         ).select_related('lead')
 
         total = pending.count()
-        sent = 0
-        failed = 0
-        skipped = 0
-
-        self.stdout.write(f'  Recipients: {total}')
+        sent = failed = skipped = 0
+        self.stdout.write(f'  Recipients pending: {total}')
 
         for i, recipient in enumerate(pending.iterator()):
             lead = recipient.lead
 
             # Check opt-out
-            opted_out = lead.wa_conversation.is_opted_out if hasattr(lead, 'wa_conversation') else False
+            opted_out = (
+                hasattr(lead, 'wa_conversation') and lead.wa_conversation.is_opted_out
+            )
             if opted_out:
                 recipient.status = 'skipped'
                 recipient.save(update_fields=['status'])
@@ -84,43 +126,72 @@ class Command(BaseCommand):
                 continue
 
             try:
-                wa_msg = send_template_and_log(
-                    lead=lead,
-                    wa_template=broadcast.template,
-                    sent_by=None,
-                )
-                if wa_msg and wa_msg.status in ('sent', 'pending'):
-                    recipient.status = 'sent'
-                    recipient.wa_message_id = wa_msg.wa_message_id
-                    recipient.sent_at = timezone.now()
-                    sent += 1
+                if broadcast.message_type == 'template' and broadcast.template:
+                    components = broadcast.template.build_components(lead)
+                    result = provider_impl.send_template(
+                        to=lead.phone,
+                        template_name=broadcast.template.name,
+                        language_code=broadcast.template.language_code,
+                        components=components,
+                    )
                 else:
-                    recipient.status = 'failed'
-                    recipient.error_message = wa_msg.failed_reason if wa_msg else 'Unknown error'
-                    failed += 1
+                    body = broadcast.render_text_body(lead)
+                    result = provider_impl.send_text(to=lead.phone, body=body)
+
+                recipient.status = 'sent'
+                recipient.wa_message_id = result.get('message_id', '')
+                recipient.sent_at = timezone.now()
+                sent += 1
+
+                # Log WAMessage so conversation history is updated
+                self._log_wa_message(lead, broadcast, recipient.wa_message_id)
 
             except Exception as e:
                 recipient.status = 'failed'
                 recipient.error_message = str(e)[:500]
                 failed += 1
-                logger.error('Broadcast %s failed for lead %s: %s', broadcast.id, lead.id, e)
+                logger.error('Campaign %s failed for lead %s: %s', broadcast.id, lead.id, e)
 
             recipient.save(update_fields=['status', 'wa_message_id', 'sent_at', 'error_message'])
 
-            # Rate limiting: pause after each batch
             if (i + 1) % BATCH_SIZE == 0:
-                self.stdout.write(f'  Progress: {i + 1}/{total} — sleeping {BATCH_PAUSE}s...')
+                self.stdout.write(f'  Progress: {i + 1}/{total} — pausing {BATCH_PAUSE}s...')
                 time.sleep(BATCH_PAUSE)
 
-        # Update broadcast counters
+        # Update counters
+        from leads.whatsapp_models import WABroadcastRecipient as Rec
         WABroadcast.objects.filter(pk=broadcast.pk).update(
             status='completed' if not dry_run else 'queued',
-            sent_count=WABroadcastRecipient.objects.filter(broadcast=broadcast, status='sent').count(),
-            failed_count=WABroadcastRecipient.objects.filter(broadcast=broadcast, status='failed').count(),
+            sent_count=Rec.objects.filter(broadcast=broadcast, status='sent').count(),
+            failed_count=Rec.objects.filter(broadcast=broadcast, status='failed').count(),
             opted_out_skipped=skipped,
             completed_at=timezone.now() if not dry_run else None,
         )
 
         self.stdout.write(self.style.SUCCESS(
-            f'  Done — Sent: {sent}, Failed: {failed}, Skipped (opt-out): {skipped}'
+            f'  Done — Sent: {sent}  Failed: {failed}  Skipped (opt-out): {skipped}'
         ))
+
+    def _log_wa_message(self, lead, broadcast, wa_message_id: str):
+        """Record the send in WAConversation/WAMessage for conversation history."""
+        try:
+            from leads.whatsapp_models import WAConversation, WAMessage
+            conv, _ = WAConversation.objects.get_or_create(
+                lead=lead, defaults={'status': 'waiting'}
+            )
+            WAMessage.objects.create(
+                conversation=conv,
+                direction='outbound',
+                message_type=broadcast.message_type,
+                status='sent',
+                body=broadcast.render_text_body(lead) if broadcast.message_type == 'text'
+                     else (broadcast.template.render_body(lead) if broadcast.template else ''),
+                template=broadcast.template if broadcast.message_type == 'template' else None,
+                wa_message_id=wa_message_id,
+                sent_at=timezone.now(),
+            )
+            WAConversation.objects.filter(pk=conv.pk).update(
+                last_message_at=timezone.now(), status='waiting'
+            )
+        except Exception as e:
+            logger.warning('Could not log WAMessage for lead %s: %s', lead.id, e)

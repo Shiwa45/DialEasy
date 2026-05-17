@@ -78,7 +78,8 @@
         </span>
         <span id="selected-count" style="font-size:12px;color:var(--brand-orange);display:none;"></span>
       </div>
-      <div class="d-flex gap-2 align-items-center" id="bulk-actions" style="display:none!important;">
+      <div class="d-flex gap-2 align-items-center flex-wrap" id="bulk-actions" style="display:none!important;">
+        {% if request.user.is_staff %}
         <select name="agent_id" class="form-select form-select-sm" style="width:160px;">
           <option value="">Assign to agent…</option>
           {% for agent in agents %}
@@ -88,6 +89,12 @@
         <button type="submit" class="btn-crm-primary" style="font-size:12px;">
           <i class="bi bi-person-check"></i> Assign Selected
         </button>
+        <button type="submit" formaction="{% url 'leads:bulk_delete_leads' %}"
+                class="btn btn-sm btn-outline-danger" style="font-size:12px;"
+                onclick="return confirm('Delete the selected leads? This cannot be undone.')">
+          <i class="bi bi-trash"></i> Delete Selected
+        </button>
+        {% endif %}
       </div>
       <div class="d-flex gap-2">
         <a href="#" class="btn-crm-outline" style="font-size:12px;">
@@ -157,10 +164,17 @@
                   <i class="bi bi-eye"></i>
                 </a>
                 {% if tenant_features.whatsapp_api and lead.phone %}
-                <button type="button" class="icon-btn" title="Send WhatsApp" 
+                <button type="button" class="icon-btn" title="Send WhatsApp"
                         style="width:28px;height:28px;font-size:14px;color:var(--brand-green);border-color:#bbf7d0;background:none;padding:0;display:flex;align-items:center;justify-content:center;"
                         onclick="openWhatsappModal('{{ lead.id }}', '{{ lead.name|escapejs }}', '{{ lead.phone|escapejs }}')">
                   <i class="bi bi-whatsapp"></i>
+                </button>
+                {% endif %}
+                {% if request.user.is_staff %}
+                <button type="button" class="icon-btn" title="Delete Lead"
+                        style="width:28px;height:28px;font-size:14px;color:#EF4444;border-color:#fecaca;"
+                        onclick="deleteLead('{{ lead.id }}', '{{ lead.name|escapejs }}')">
+                  <i class="bi bi-trash"></i>
                 </button>
                 {% endif %}
               </div>
@@ -220,6 +234,11 @@
   {% endif %}
 </div>
 
+<!-- Hidden form for single-lead delete -->
+<form id="single-delete-form" method="post" style="display:none;">
+  {% csrf_token %}
+</form>
+
 <!-- Send WhatsApp Modal -->
 <div class="modal fade" id="listWhatsappModal" tabindex="-1">
   <div class="modal-dialog">
@@ -276,6 +295,13 @@ checkAll.addEventListener('change', () => {
 });
 
 rowChecks.forEach(cb => cb.addEventListener('change', updateBulkBar));
+
+function deleteLead(leadId, leadName) {
+  if (!confirm('Delete lead "' + leadName + '"? This cannot be undone.')) return;
+  const form = document.getElementById('single-delete-form');
+  form.action = '/leads/lead/' + leadId + '/delete/';
+  form.submit();
+}
 
 function openWhatsappModal(leadId, leadName, leadPhone) {
   document.getElementById('waModalLeadName').textContent = leadName;

@@ -87,6 +87,34 @@ def dashboard(request):
 
 
 @login_required
+@require_POST
+def delete_lead(request, lead_id):
+    if not request.user.is_staff:
+        messages.error(request, 'Only admins can delete leads.')
+        return redirect('leads:lead_list')
+    lead = get_object_or_404(Lead, id=lead_id)
+    name = lead.name
+    lead.delete()
+    messages.success(request, f'Lead "{name}" deleted successfully.')
+    return redirect('leads:lead_list')
+
+
+@login_required
+@require_POST
+def bulk_delete_leads(request):
+    if not request.user.is_staff:
+        messages.error(request, 'Only admins can delete leads.')
+        return redirect('leads:lead_list')
+    lead_ids = request.POST.getlist('lead_ids')
+    if not lead_ids:
+        messages.error(request, 'No leads selected.')
+        return redirect('leads:lead_list')
+    deleted_count, _ = Lead.objects.filter(id__in=lead_ids).delete()
+    messages.success(request, f'{deleted_count} lead{"s" if deleted_count != 1 else ""} deleted.')
+    return redirect('leads:lead_list')
+
+
+@login_required
 def lead_list(request):
     """Display all leads with filtering and search"""
     
@@ -947,3 +975,480 @@ def call_recordings_list(request):
     return render(request, 'leads/call_recordings_list.html', {
         'recordings': recordings,
     })
+
+
+# ─── Bulk WhatsApp Campaigns ──────────────────────────────────────────────────
+
+def _require_bulk_whatsapp(request):
+    """Returns None if access OK, otherwise a redirect response."""
+    from tenants.feature_gates import tenant_has_feature
+    if not request.user.is_staff:
+        messages.error(request, 'Access denied.')
+        return redirect('leads:dashboard')
+    if not tenant_has_feature(request, 'bulk_whatsapp'):
+        return render(request, 'leads/feature_not_available.html',
+                      {'feature': 'Bulk WhatsApp Campaigns'})
+    return None
+
+
+@login_required
+def campaign_list(request):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+
+    from leads.whatsapp_models import WABroadcast
+    status_choices = [
+        ('queued', 'Queued'), ('running', 'Running'), ('completed', 'Completed'),
+        ('paused', 'Paused'), ('cancelled', 'Cancelled'), ('failed', 'Failed'),
+    ]
+    current_status = request.GET.get('status', '')
+    qs = WABroadcast.objects.select_related('template', 'provider').order_by('-created_at')
+    if current_status:
+        qs = qs.filter(status=current_status)
+
+    return render(request, 'whatsapp/campaign_list.html', {
+        'campaigns': qs,
+        'status_choices': status_choices,
+        'current_status': current_status,
+    })
+
+
+@login_required
+def campaign_create(request):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+
+    from leads.whatsapp_models import WABroadcast, WATemplate, WABroadcastRecipient, WAProvider
+    from agents.models import AgentProfile
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        description = request.POST.get('description', '')
+        message_type = request.POST.get('message_type', 'template')
+        template_id = request.POST.get('template_id')
+        text_body = request.POST.get('text_body', '').strip()
+        provider_id = request.POST.get('provider_id')
+        schedule_type = request.POST.get('schedule_type', 'now')
+        scheduled_at_raw = request.POST.get('scheduled_at')
+
+        # Audience filter
+        lead_filter = {}
+        if request.POST.get('filter_status'):
+            lead_filter['status'] = request.POST['filter_status']
+        if request.POST.get('filter_source'):
+            lead_filter['source'] = request.POST['filter_source']
+        if request.POST.get('filter_agent_id'):
+            lead_filter['assigned_agent_id'] = int(request.POST['filter_agent_id'])
+
+        # Validate
+        if not name:
+            messages.error(request, 'Campaign name is required.')
+        elif message_type == 'template' and not template_id:
+            messages.error(request, 'Please select a template.')
+        elif message_type == 'text' and not text_body:
+            messages.error(request, 'Message text is required.')
+        else:
+            template = None
+            if message_type == 'template':
+                try:
+                    template = WATemplate.objects.get(id=template_id, is_active=True, status='approved')
+                except WATemplate.DoesNotExist:
+                    messages.error(request, 'Selected template is not available.')
+                    template = 'invalid'
+
+            if template != 'invalid':
+                provider = None
+                if provider_id:
+                    provider = WAProvider.objects.filter(id=provider_id, is_active=True).first()
+                if not provider:
+                    provider = WAProvider.objects.filter(is_active=True, is_default=True).first() \
+                        or WAProvider.objects.filter(is_active=True).first()
+
+                # Build lead queryset
+                lead_qs = Lead.objects.all()
+                if lead_filter.get('status'):
+                    lead_qs = lead_qs.filter(status=lead_filter['status'])
+                if lead_filter.get('source'):
+                    lead_qs = lead_qs.filter(source__icontains=lead_filter['source'])
+                if lead_filter.get('assigned_agent_id'):
+                    lead_qs = lead_qs.filter(assigned_agent_id=lead_filter['assigned_agent_id'])
+                from leads.whatsapp_models import WAConversation
+                opted_out = WAConversation.objects.filter(is_opted_out=True).values_list('lead_id', flat=True)
+                lead_qs = lead_qs.exclude(id__in=opted_out)
+                total = lead_qs.count()
+
+                if total == 0:
+                    messages.error(request, 'No eligible leads match the selected filter.')
+                else:
+                    scheduled_at = None
+                    if schedule_type == 'later' and scheduled_at_raw:
+                        from django.utils.dateparse import parse_datetime
+                        scheduled_at = parse_datetime(scheduled_at_raw)
+
+                    broadcast = WABroadcast.objects.create(
+                        name=name,
+                        description=description,
+                        message_type=message_type,
+                        template=template,
+                        text_body=text_body if message_type == 'text' else '',
+                        provider=provider,
+                        lead_filter=lead_filter,
+                        total_leads=total,
+                        status='queued' if not scheduled_at else 'draft',
+                        scheduled_at=scheduled_at or timezone.now(),
+                        created_by=request.user,
+                    )
+                    WABroadcastRecipient.objects.bulk_create(
+                        [WABroadcastRecipient(broadcast=broadcast, lead=lead)
+                         for lead in lead_qs.iterator()],
+                        batch_size=500,
+                    )
+                    messages.success(request, f'Campaign "{name}" created for {total} leads.')
+                    return redirect('leads:campaign_detail', campaign_id=broadcast.id)
+
+    templates = WATemplate.objects.filter(is_active=True, status='approved').order_by('display_name')
+    providers = WAProvider.objects.filter(is_active=True).order_by('-is_default', 'name')
+    agents = User.objects.filter(is_active=True, agent_profile__isnull=False)
+
+    return render(request, 'whatsapp/campaign_create.html', {
+        'templates': templates,
+        'providers': providers,
+        'agents': agents,
+        'lead_statuses': Lead.STATUS_CHOICES,
+    })
+
+
+@login_required
+def campaign_detail(request, campaign_id):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+
+    from leads.whatsapp_models import WABroadcast, WABroadcastRecipient
+    campaign = get_object_or_404(WABroadcast, id=campaign_id)
+
+    # Recipient pagination
+    recipient_statuses = WABroadcastRecipient.STATUS_CHOICES
+    current_recipient_status = request.GET.get('recipient_status', '')
+    page_size = 50
+    offset = int(request.GET.get('offset', 0))
+
+    qs = campaign.recipients.select_related('lead').order_by('id')
+    if current_recipient_status:
+        qs = qs.filter(status=current_recipient_status)
+    total_recipients = qs.count()
+    recipients = qs[offset:offset + page_size]
+
+    delivery_pct = round(campaign.sent_count / campaign.total_leads * 100) if campaign.total_leads else 0
+
+    kpis = [
+        ('Total Leads', campaign.total_leads, 'bi-people', '#3B82F6'),
+        ('Sent', campaign.sent_count, 'bi-check2', '#22C55E'),
+        ('Delivered', campaign.delivered_count, 'bi-check2-all', '#16A34A'),
+        ('Read', campaign.read_count, 'bi-eye', '#8B5CF6'),
+        ('Replied', campaign.replied_count, 'bi-chat-dots', '#F59E0B'),
+        ('Failed', campaign.failed_count, 'bi-x-circle', '#EF4444'),
+        ('Skipped', campaign.opted_out_skipped, 'bi-slash-circle', '#94A3B8'),
+        ('Delivery %', f'{delivery_pct}%', 'bi-bar-chart', '#0EA5E9'),
+    ]
+
+    return render(request, 'whatsapp/campaign_detail.html', {
+        'campaign': campaign,
+        'kpis': kpis,
+        'recipients': recipients,
+        'recipient_statuses': recipient_statuses,
+        'current_recipient_status': current_recipient_status,
+        'total_recipients': total_recipients,
+        'page_size': page_size,
+        'offset': offset,
+        'has_prev': offset > 0,
+        'has_next': offset + page_size < total_recipients,
+        'prev_offset': max(0, offset - page_size),
+        'next_offset': offset + page_size,
+        'delivery_pct': delivery_pct,
+    })
+
+
+@login_required
+@require_POST
+def campaign_pause(request, campaign_id):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+    from leads.whatsapp_models import WABroadcast
+    b = get_object_or_404(WABroadcast, id=campaign_id)
+    if b.status in ('queued', 'running'):
+        b.status = 'paused'
+        b.save(update_fields=['status'])
+        messages.success(request, f'Campaign "{b.name}" paused.')
+    return redirect('leads:campaign_detail', campaign_id=campaign_id)
+
+
+@login_required
+@require_POST
+def campaign_resume(request, campaign_id):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+    from leads.whatsapp_models import WABroadcast
+    b = get_object_or_404(WABroadcast, id=campaign_id)
+    if b.status == 'paused':
+        b.status = 'queued'
+        b.save(update_fields=['status'])
+        messages.success(request, f'Campaign "{b.name}" resumed.')
+    return redirect('leads:campaign_detail', campaign_id=campaign_id)
+
+
+@login_required
+@require_POST
+def campaign_cancel(request, campaign_id):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+    from leads.whatsapp_models import WABroadcast
+    b = get_object_or_404(WABroadcast, id=campaign_id)
+    if b.status not in ('completed', 'cancelled'):
+        b.status = 'cancelled'
+        b.save(update_fields=['status'])
+        messages.warning(request, f'Campaign "{b.name}" cancelled.')
+    return redirect('leads:campaign_list')
+
+
+# ─── Provider Settings ────────────────────────────────────────────────────────
+
+@login_required
+def provider_settings(request):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+
+    from leads.whatsapp_models import WAProvider
+    from leads.whatsapp_providers import PROVIDER_CHOICES, get_provider
+
+    providers = list(WAProvider.objects.all().order_by('-is_default', 'name'))
+
+    # Attach last test result if stored in session
+    test_results = request.session.pop('provider_test_results', {})
+    for p in providers:
+        key = str(p.id)
+        if key in test_results:
+            p.test_ok = test_results[key]['ok']
+            p.test_result = test_results[key]['message']
+        else:
+            p.test_ok = None
+            p.test_result = None
+
+    return render(request, 'whatsapp/provider_settings.html', {
+        'providers': providers,
+        'provider_choices': PROVIDER_CHOICES,
+    })
+
+
+@login_required
+@require_POST
+def provider_create(request):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+
+    from leads.whatsapp_models import WAProvider
+    p = WAProvider.objects.create(
+        name=request.POST.get('name', ''),
+        provider=request.POST.get('provider', ''),
+        is_active=True,
+        is_default='is_default' in request.POST,
+        meta_phone_number_id=request.POST.get('meta_phone_number_id', ''),
+        meta_access_token=request.POST.get('meta_access_token', ''),
+        meta_verify_token=request.POST.get('meta_verify_token', ''),
+        twilio_account_sid=request.POST.get('twilio_account_sid', ''),
+        twilio_auth_token=request.POST.get('twilio_auth_token', ''),
+        twilio_from_number=request.POST.get('twilio_from_number', ''),
+        wati_api_endpoint=request.POST.get('wati_api_endpoint', ''),
+        wati_api_key=request.POST.get('wati_api_key', ''),
+        aisensy_api_key=request.POST.get('aisensy_api_key', ''),
+        interakt_api_key=request.POST.get('interakt_api_key', ''),
+        created_by=request.user,
+    )
+    messages.success(request, f'Provider "{p.name}" added.')
+    return redirect('leads:provider_settings')
+
+
+@login_required
+@require_POST
+def provider_test(request, provider_id):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+
+    from leads.whatsapp_models import WAProvider
+    from leads.whatsapp_providers import get_provider as _get
+    p = get_object_or_404(WAProvider, id=provider_id)
+    try:
+        ok, msg = _get(p).test_connection()
+    except Exception as e:
+        ok, msg = False, str(e)
+
+    results = request.session.get('provider_test_results', {})
+    results[str(p.id)] = {'ok': ok, 'message': msg}
+    request.session['provider_test_results'] = results
+    if ok:
+        messages.success(request, f'{p.name}: {msg}')
+    else:
+        messages.error(request, f'{p.name}: {msg}')
+    return redirect('leads:provider_settings')
+
+
+@login_required
+@require_POST
+def provider_set_default(request, provider_id):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+    from leads.whatsapp_models import WAProvider
+    p = get_object_or_404(WAProvider, id=provider_id)
+    p.is_default = True
+    p.save()
+    messages.success(request, f'"{p.name}" is now the default provider.')
+    return redirect('leads:provider_settings')
+
+
+@login_required
+@require_POST
+def provider_delete(request, provider_id):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+    from leads.whatsapp_models import WAProvider
+    p = get_object_or_404(WAProvider, id=provider_id)
+    name = p.name
+    p.delete()
+    messages.success(request, f'Provider "{name}" deleted.')
+    return redirect('leads:provider_settings')
+
+
+# ─── WhatsApp Template Management ────────────────────────────────────────────
+
+@login_required
+def wa_template_list(request):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+
+    from leads.whatsapp_models import WATemplate
+    templates = WATemplate.objects.all().order_by('display_name')
+    return render(request, 'whatsapp/template_list.html', {
+        'templates': templates,
+        'category_choices': WATemplate.CATEGORY_CHOICES,
+        'status_choices': WATemplate.STATUS_CHOICES,
+    })
+
+
+@login_required
+@require_POST
+def wa_template_create(request):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+
+    from leads.whatsapp_models import WATemplate
+    import json
+
+    name = request.POST.get('name', '').strip()
+    display_name = request.POST.get('display_name', '').strip()
+    if not name or not display_name:
+        messages.error(request, 'Template name and display name are required.')
+        return redirect('leads:wa_template_list')
+
+    buttons_raw = request.POST.get('buttons', '').strip()
+    buttons = []
+    if buttons_raw:
+        try:
+            buttons = json.loads(buttons_raw)
+        except json.JSONDecodeError:
+            messages.error(request, 'Buttons JSON is invalid.')
+            return redirect('leads:wa_template_list')
+
+    WATemplate.objects.create(
+        name=name,
+        display_name=display_name,
+        category=request.POST.get('category', 'utility'),
+        language_code=request.POST.get('language_code', 'en_US').strip() or 'en_US',
+        status=request.POST.get('status', 'pending'),
+        body_text=request.POST.get('body_text', '').strip(),
+        header_text=request.POST.get('header_text', '').strip() or None,
+        footer_text=request.POST.get('footer_text', '').strip() or None,
+        buttons=buttons,
+        is_active=True,
+        created_by=request.user,
+    )
+    messages.success(request, f'Template "{display_name}" created.')
+    return redirect('leads:wa_template_list')
+
+
+@login_required
+def wa_template_edit(request, template_id):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+
+    from leads.whatsapp_models import WATemplate
+    import json
+
+    tmpl = get_object_or_404(WATemplate, id=template_id)
+
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        display_name = request.POST.get('display_name', '').strip()
+        if not name or not display_name:
+            messages.error(request, 'Template name and display name are required.')
+            return redirect('leads:wa_template_edit', template_id=template_id)
+
+        buttons_raw = request.POST.get('buttons', '').strip()
+        buttons = tmpl.buttons
+        if buttons_raw:
+            try:
+                buttons = json.loads(buttons_raw)
+            except json.JSONDecodeError:
+                messages.error(request, 'Buttons JSON is invalid.')
+                return redirect('leads:wa_template_edit', template_id=template_id)
+        else:
+            buttons = []
+
+        tmpl.name = name
+        tmpl.display_name = display_name
+        tmpl.category = request.POST.get('category', 'utility')
+        tmpl.language_code = request.POST.get('language_code', 'en_US').strip() or 'en_US'
+        tmpl.status = request.POST.get('status', 'pending')
+        tmpl.body_text = request.POST.get('body_text', '').strip()
+        tmpl.header_text = request.POST.get('header_text', '').strip() or None
+        tmpl.footer_text = request.POST.get('footer_text', '').strip() or None
+        tmpl.buttons = buttons
+        tmpl.is_active = 'is_active' in request.POST
+        tmpl.save()
+        messages.success(request, f'Template "{tmpl.display_name}" updated.')
+        return redirect('leads:wa_template_list')
+
+    import json as _json
+    return render(request, 'whatsapp/template_edit.html', {
+        'tmpl': tmpl,
+        'category_choices': WATemplate.CATEGORY_CHOICES,
+        'status_choices': WATemplate.STATUS_CHOICES,
+        'buttons_json': _json.dumps(tmpl.buttons, indent=2) if tmpl.buttons else '',
+    })
+
+
+@login_required
+@require_POST
+def wa_template_delete(request, template_id):
+    block = _require_bulk_whatsapp(request)
+    if block:
+        return block
+
+    from leads.whatsapp_models import WATemplate
+    tmpl = get_object_or_404(WATemplate, id=template_id)
+    name = tmpl.display_name
+    tmpl.delete()
+    messages.success(request, f'Template "{name}" deleted.')
+    return redirect('leads:wa_template_list')

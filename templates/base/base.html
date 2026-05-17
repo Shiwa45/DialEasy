@@ -545,14 +545,30 @@
     <a href="{% url 'leads:settings_dispositions' %}" class="nav-link-item {% if request.resolver_match.url_name == 'settings_dispositions' %}active{% endif %}">
       <i class="bi bi-sliders"></i> Dispositions
     </a>
+    {% endif %}
+
+    {% if tenant_features.call_recording and request.user.is_staff %}
     <a href="{% url 'leads:call_recordings_list' %}" class="nav-link-item {% if request.resolver_match.url_name == 'call_recordings_list' %}active{% endif %}">
       <i class="bi bi-mic-fill"></i> Recordings
     </a>
     {% endif %}
 
-    {% if tenant_features.whatsapp_api %}
+    {% if tenant_features.whatsapp_api or tenant_features.bulk_whatsapp %}
+    <div class="nav-section-label">WhatsApp</div>
     <a href="{% url 'leads:integrations' %}" class="nav-link-item {% if request.resolver_match.url_name == 'integrations' %}active{% endif %}">
-      <i class="bi bi-whatsapp"></i> WhatsApp
+      <i class="bi bi-whatsapp"></i> WhatsApp Setup
+    </a>
+    {% endif %}
+
+    {% if tenant_features.bulk_whatsapp and request.user.is_staff %}
+    <a href="{% url 'leads:campaign_list' %}" class="nav-link-item {% if request.resolver_match.url_name in 'campaign_list,campaign_create,campaign_detail' %}active{% endif %}">
+      <i class="bi bi-megaphone-fill"></i> Bulk Campaigns
+    </a>
+    <a href="{% url 'leads:wa_template_list' %}" class="nav-link-item {% if request.resolver_match.url_name in 'wa_template_list,wa_template_edit' %}active{% endif %}">
+      <i class="bi bi-card-text"></i> WA Templates
+    </a>
+    <a href="{% url 'leads:provider_settings' %}" class="nav-link-item {% if request.resolver_match.url_name == 'provider_settings' %}active{% endif %}">
+      <i class="bi bi-broadcast-pin"></i> WA Providers
     </a>
     {% endif %}
 

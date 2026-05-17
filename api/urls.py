@@ -6,7 +6,9 @@ from .integrations_v2 import whatsapp_webhook, whatsapp_send_message, whatsapp_s
 from .whatsapp_views import (
     conversation_list, conversation_detail, conversation_messages,
     send_message, template_list, template_detail, template_preview,
-    broadcast_list, broadcast_pause,
+    broadcast_list, broadcast_detail, broadcast_pause, broadcast_resume,
+    broadcast_cancel, broadcast_recipients, broadcast_estimate,
+    provider_list, provider_detail, provider_test, provider_choices,
 )
 
 router = DefaultRouter()
@@ -40,9 +42,20 @@ urlpatterns = [
     path('whatsapp/templates/<int:template_id>/',        template_detail,  name='wa_template_detail'),
     path('whatsapp/templates/<int:template_id>/preview/',template_preview, name='wa_template_preview'),
 
-    # WhatsApp Broadcasts
-    path('whatsapp/broadcasts/',                            broadcast_list,  name='wa_broadcast_list'),
-    path('whatsapp/broadcasts/<int:broadcast_id>/pause/',   broadcast_pause, name='wa_broadcast_pause'),
+    # WhatsApp Providers
+    path('whatsapp/providers/',                            provider_list,    name='wa_provider_list'),
+    path('whatsapp/providers/choices/',                    provider_choices, name='wa_provider_choices'),
+    path('whatsapp/providers/<int:provider_id>/',          provider_detail,  name='wa_provider_detail'),
+    path('whatsapp/providers/<int:provider_id>/test/',     provider_test,    name='wa_provider_test'),
+
+    # WhatsApp Broadcasts / Campaigns
+    path('whatsapp/broadcasts/',                                  broadcast_list,       name='wa_broadcast_list'),
+    path('whatsapp/broadcasts/estimate/',                         broadcast_estimate,   name='wa_broadcast_estimate'),
+    path('whatsapp/broadcasts/<int:broadcast_id>/',               broadcast_detail,     name='wa_broadcast_detail'),
+    path('whatsapp/broadcasts/<int:broadcast_id>/pause/',         broadcast_pause,      name='wa_broadcast_pause'),
+    path('whatsapp/broadcasts/<int:broadcast_id>/resume/',        broadcast_resume,     name='wa_broadcast_resume'),
+    path('whatsapp/broadcasts/<int:broadcast_id>/cancel/',        broadcast_cancel,     name='wa_broadcast_cancel'),
+    path('whatsapp/broadcasts/<int:broadcast_id>/recipients/',    broadcast_recipients, name='wa_broadcast_recipients'),
 
     # Auth
     path('auth/login/',   views.login_view,   name='api_login'),

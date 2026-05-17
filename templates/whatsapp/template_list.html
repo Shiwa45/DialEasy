@@ -1,0 +1,150 @@
+{% extends "base/base.html" %}
+{% block title %}WhatsApp Templates — DialEasy CRM{% endblock %}
+{% block page_title %}WhatsApp Templates{% endblock %}
+{% block page_sub %}Manage approved message templates for campaigns{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <p class="text-muted mb-0" style="font-size:13px;">
+    Templates with <strong>Approved</strong> status are available for bulk campaigns.
+    Use the exact template name registered in Meta Business Manager.
+  </p>
+  <button class="btn btn-success" onclick="showAddForm()">
+    <i class="bi bi-plus-lg"></i> Add Template
+  </button>
+</div>
+
+<!-- Add Template Form (hidden by default) -->
+<div class="crm-card mb-3" id="addTemplateCard" style="display:none;">
+  <div class="crm-card-title mb-3"><i class="bi bi-card-text"></i> New WhatsApp Template</div>
+  <form method="post" action="{% url 'leads:wa_template_create' %}">
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label fw-semibold" style="font-size:13px;">Template Name (Meta) <span class="text-danger">*</span></label>
+        <input type="text" name="name" class="form-control" placeholder="e.g. follow_up_v1" required>
+        <div class="mt-1" style="font-size:11px;color:#64748B;">Exact name from Meta Business Manager (lowercase, underscores)</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-semibold" style="font-size:13px;">Display Name <span class="text-danger">*</span></label>
+        <input type="text" name="display_name" class="form-control" placeholder="e.g. Follow-up v1" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold" style="font-size:13px;">Category</label>
+        <select name="category" class="form-select">
+          {% for val, label in category_choices %}
+          <option value="{{ val }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold" style="font-size:13px;">Language</label>
+        <input type="text" name="language_code" class="form-control" value="en_US" placeholder="en_US">
+      </div>
+      <div class="col-md-10">
+        <label class="form-label fw-semibold" style="font-size:13px;">Body Text <span class="text-danger">*</span></label>
+        <textarea name="body_text" class="form-control" rows="4"
+          placeholder="Hi {{name}}, we noticed your enquiry about {{company}}. Our team will call you shortly."></textarea>
+        <div class="mt-1" style="font-size:11px;color:#64748B;">
+          Variables: <code>&#123;&#123;name&#125;&#125;</code> &nbsp; <code>&#123;&#123;company&#125;&#125;</code> &nbsp; <code>&#123;&#123;phone&#125;&#125;</code> &nbsp; <code>&#123;&#123;agent_name&#125;&#125;</code>
+        </div>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold" style="font-size:13px;">Status</label>
+        <select name="status" class="form-select">
+          {% for val, label in status_choices %}
+          <option value="{{ val }}" {% if val == 'approved' %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-semibold" style="font-size:13px;">Header Text <span class="text-muted fw-normal">(optional)</span></label>
+        <input type="text" name="header_text" class="form-control" placeholder="e.g. Greetings from DialEasy">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-semibold" style="font-size:13px;">Footer Text <span class="text-muted fw-normal">(optional)</span></label>
+        <input type="text" name="footer_text" class="form-control" placeholder="e.g. Reply STOP to opt out">
+      </div>
+    </div>
+    <div class="d-flex justify-content-end gap-2 mt-3">
+      <button type="button" class="btn btn-outline-secondary" onclick="hideAddForm()">Cancel</button>
+      <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Save Template</button>
+    </div>
+  </form>
+</div>
+
+<!-- Template list -->
+{% if templates %}
+<div class="crm-card p-0">
+  <table class="crm-table">
+    <thead>
+      <tr>
+        <th>Display Name</th>
+        <th>Meta Name</th>
+        <th>Category</th>
+        <th>Language</th>
+        <th>Status</th>
+        <th>Body Preview</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in templates %}
+      <tr>
+        <td>
+          <span style="font-weight:600;color:#0F172A;">{{ t.display_name }}</span>
+          {% if not t.is_active %}<span class="badge bg-secondary ms-1" style="font-size:10px;">INACTIVE</span>{% endif %}
+        </td>
+        <td><code style="font-size:11px;">{{ t.name }}</code></td>
+        <td style="font-size:12px;">{{ t.get_category_display }}</td>
+        <td style="font-size:12px;">{{ t.language_code }}</td>
+        <td>
+          <span class="badge-status
+            {% if t.status == 'approved' %}badge-active
+            {% elif t.status == 'pending' %}badge-callback
+            {% elif t.status == 'rejected' %}badge-lost
+            {% else %}badge-inactive{% endif %}">
+            {{ t.get_status_display }}
+          </span>
+        </td>
+        <td style="font-size:12px;color:#475569;max-width:280px;">
+          <span title="{{ t.body_text }}">{{ t.body_text|truncatechars:80 }}</span>
+        </td>
+        <td>
+          <div class="d-flex gap-1">
+            <a href="{% url 'leads:wa_template_edit' t.id %}" class="btn btn-sm btn-outline-primary" title="Edit">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <form method="post" action="{% url 'leads:wa_template_delete' t.id %}" onsubmit="return confirm('Delete template &quot;{{ t.display_name }}&quot;?');">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="crm-card text-center py-5">
+  <i class="bi bi-card-text" style="font-size:48px;color:#94A3B8;display:block;margin-bottom:16px;"></i>
+  <h5 style="font-weight:700;color:#0F172A;">No templates yet</h5>
+  <p class="text-muted" style="font-size:13px;max-width:420px;margin:8px auto 0;">
+    Add WhatsApp message templates to use in bulk campaigns.
+    Templates must be approved in Meta Business Manager before they can be sent.
+  </p>
+  <button class="btn btn-primary mt-3" onclick="showAddForm()">Add First Template</button>
+</div>
+{% endif %}
+
+<script>
+function showAddForm() {
+  document.getElementById('addTemplateCard').style.display = '';
+  document.getElementById('addTemplateCard').scrollIntoView({behavior:'smooth'});
+}
+function hideAddForm() {
+  document.getElementById('addTemplateCard').style.display = 'none';
+}
+</script>
+{% endblock %}
