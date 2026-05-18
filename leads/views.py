@@ -515,14 +515,15 @@ def process_lead_file_enhanced(uploaded_file, funnel=None, override_agent=None):
                 if funnel:
                     lead_data['funnel'] = funnel
 
-                # Assign agent: round-robin across funnel agents, or single override
+                # Assign agent only when creating a new lead (round-robin).
+                # agent_index only advances for new leads because duplicates
+                # are caught above and hit `continue` before reaching here.
                 if funnel_agents:
                     lead_data['assigned_agent'] = funnel_agents[agent_index % len(funnel_agents)]
                     agent_index += 1
                 elif override_agent:
                     lead_data['assigned_agent'] = override_agent
 
-                # Create lead
                 Lead.objects.create(**lead_data)
                 success_count += 1
                 

@@ -1438,19 +1438,21 @@ def bulk_assign_leads_api(request):
 
         leads = Lead.objects.filter(id__in=lead_ids)
 
-        # Auto-assign via rule
+        # Auto-assign via rule — only assign leads that have no agent yet
         if request.data.get('auto'):
             rule = AssignmentRule.objects.filter(is_active=True).first()
             if not rule:
                 return Response({'error': 'No active assignment rule found.'}, status=400)
+            unassigned = leads.filter(assigned_agent__isnull=True)
             assigned = 0
-            for lead in leads:
+            skipped = leads.count() - unassigned.count()
+            for lead in unassigned:
                 agent = rule.get_next_agent(lead_source=lead.source)
                 if agent:
                     lead.assigned_agent = agent
                     lead.save(update_fields=['assigned_agent'])
                     assigned += 1
-            return Response({'assigned': assigned, 'total': len(lead_ids)})
+            return Response({'assigned': assigned, 'skipped_already_assigned': skipped, 'total': len(lead_ids)})
 
         # Manual assign to specific agent
         agent_id = request.data.get('agent_id')
