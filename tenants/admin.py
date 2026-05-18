@@ -331,6 +331,130 @@ class SuperAdminUserAdmin(BaseUserAdmin):
         }),
     )
 
+    def delete_view(self, request, object_id, extra_context=None):
+        if str(request.user.pk) == str(object_id):
+            from django.contrib import messages
+            from django.shortcuts import redirect
+            messages.error(request, "You cannot delete your own account while you are logged in.")
+            return redirect('..')
+        return super().delete_view(request, object_id, extra_context)
+
+    def get_deleted_objects(self, objs, request):
+        from django.db import IntegrityError, ProgrammingError, OperationalError, transaction
+        try:
+            with transaction.atomic():
+                return super().get_deleted_objects(objs, request)
+        except (IntegrityError, ProgrammingError, OperationalError):
+            obj_display = [str(obj) for obj in objs]
+            model_count = {str(objs[0]._meta.verbose_name): len(objs)} if objs else {}
+            return obj_display, model_count, set(), []
+
+    def _raw_delete_user(self, request, obj):
+        from django.contrib.admin.models import LogEntry
+
+        # The fallback bypasses Django's collector to avoid tenant-only tables
+        # in the public schema, so clean up public-schema references explicitly.
+        LogEntry.objects.filter(user=obj).delete()
+        obj.groups.clear()
+        obj.user_permissions.clear()
+        try:
+            from rest_framework.authtoken.models import Token
+            Token.objects.filter(user=obj).delete()
+        except Exception:
+            pass
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
+            OutstandingToken.objects.filter(user=obj).update(user=None)
+        except Exception:
+            pass
+
+        self._clean_tenant_user_references(obj)
+
+        # Bypass tenant reverse relations like leads.Funnel.agents.
+        type(obj)._default_manager.filter(pk=obj.pk)._raw_delete(
+            using=obj._state.db
+        )
+
+    def _clean_tenant_user_references(self, obj):
+        from django.apps import apps
+        from django.conf import settings
+        from django.contrib.auth.models import User
+        from django.db import connection, models
+        from django.db.models import CASCADE, DO_NOTHING, SET_DEFAULT, SET_NULL
+        from django_tenants.utils import schema_context
+        from tenants.models import Client
+
+        tenant_models = {
+            model
+            for app_label in settings.TENANT_APPS
+            for model in apps.get_app_config(app_label.split('.')[-1]).get_models()
+        }
+        user_fields = []
+        user_m2m_fields = []
+
+        for model in tenant_models:
+            for field in model._meta.get_fields():
+                if getattr(field, "many_to_many", False) and not field.auto_created:
+                    if field.remote_field and field.remote_field.model is User:
+                        user_m2m_fields.append((model, field))
+                elif isinstance(field, models.ForeignKey) and field.remote_field.model is User:
+                    user_fields.append((model, field))
+
+        for schema_name in Client.objects.exclude(schema_name="public").values_list("schema_name", flat=True):
+            with schema_context(schema_name):
+                existing_tables = set(connection.introspection.table_names())
+
+                for model, field in user_m2m_fields:
+                    through = field.remote_field.through
+                    if through._meta.db_table in existing_tables:
+                        through.objects.filter(**{field.m2m_reverse_field_name(): obj.pk}).delete()
+
+                for model, field in user_fields:
+                    if model._meta.db_table not in existing_tables:
+                        continue
+
+                    lookup = {field.name: obj}
+                    on_delete = field.remote_field.on_delete
+
+                    if on_delete is CASCADE:
+                        model.objects.filter(**lookup).delete()
+                    elif on_delete is SET_NULL and field.null:
+                        model.objects.filter(**lookup).update(**{field.name: None})
+                    elif on_delete is SET_DEFAULT:
+                        model.objects.filter(**lookup).update(**{field.name: field.get_default()})
+                    elif on_delete is DO_NOTHING:
+                        continue
+
+    def delete_model(self, request, obj):
+        from django.db import IntegrityError, ProgrammingError, OperationalError, transaction
+        try:
+            # Savepoint: if the ORM deletion collector queries tenant tables
+            # that don't exist in the public schema, roll back only the savepoint.
+            with transaction.atomic():
+                obj.delete()
+        except (IntegrityError, ProgrammingError, OperationalError):
+            self._raw_delete_user(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        from django.contrib import messages
+        from django.db import IntegrityError, ProgrammingError, OperationalError, transaction
+
+        own_account = queryset.filter(pk=request.user.pk).exists()
+        queryset = queryset.exclude(pk=request.user.pk)
+
+        if own_account:
+            messages.error(request, "Your own account was not deleted.")
+
+        if not queryset.exists():
+            return
+
+        try:
+            with transaction.atomic():
+                return super().delete_queryset(request, queryset)
+        except (IntegrityError, ProgrammingError, OperationalError):
+            for obj in queryset:
+                self._raw_delete_user(request, obj)
+
     def tenant_hint(self, obj):
         """
         Infer tenant from the username convention used when auto-creating tenant admins:

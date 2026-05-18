@@ -27,6 +27,34 @@ class UserAdmin(BaseUserAdmin):
             is_staff=False,
         )
 
+    def delete_view(self, request, object_id, extra_context=None):
+        if str(request.user.pk) == str(object_id):
+            from django.contrib import messages
+            from django.shortcuts import redirect
+            messages.error(request, "You cannot delete your own account while you are logged in.")
+            return redirect('..')
+        return super().delete_view(request, object_id, extra_context)
+
+    def get_deleted_objects(self, objs, request):
+        from django.db import ProgrammingError, OperationalError, transaction
+        try:
+            with transaction.atomic():
+                return super().get_deleted_objects(objs, request)
+        except (ProgrammingError, OperationalError):
+            obj_display = [str(obj) for obj in objs]
+            model_count = {str(objs[0]._meta.verbose_name): len(objs)} if objs else {}
+            return obj_display, model_count, set(), []
+
+    def delete_model(self, request, obj):
+        from django.db import ProgrammingError, OperationalError, transaction
+        try:
+            with transaction.atomic():
+                obj.delete()
+        except (ProgrammingError, OperationalError):
+            type(obj)._default_manager.filter(pk=obj.pk)._raw_delete(
+                using=obj._state.db
+            )
+
 # Re-register UserAdmin for the tenant admin panel
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
