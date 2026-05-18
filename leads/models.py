@@ -636,6 +636,12 @@ def on_call_logged(sender, instance, created, **kwargs):
             description=f'Call logged: {instance.get_disposition_display()}. Duration: {instance.duration or "unknown"}',
             metadata={'call_log_id': instance.pk, 'disposition': instance.disposition},
         )
+        # Keep AgentProfile.total_calls_made in sync without a full update_stats() scan.
+        from django.db.models import F
+        from agents.models import AgentProfile
+        AgentProfile.objects.filter(user=instance.agent).update(
+            total_calls_made=F('total_calls_made') + 1
+        )
         # Recalculate score after new call
         instance.lead.recalculate_score()
 

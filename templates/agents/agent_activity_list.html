@@ -52,7 +52,7 @@
   <div class="col-6 col-md-3">
     <div class="stat-card stat-orange">
       <div class="stat-label">Total Calls Today</div>
-      <div class="stat-value">{{ total_calls_today }}</div>
+      <div class="stat-value" id="stat-total-calls">{{ total_calls_today }}</div>
       <div class="stat-delta">{{ selected_date|date:"d M Y" }}</div>
     </div>
   </div>
@@ -117,7 +117,7 @@
             {% endif %}
           </td>
           <td style="font-weight:700;">{{ row.session_count }}</td>
-          <td style="font-weight:700;color:var(--brand-orange);">{{ row.total_calls_made }}</td>
+          <td class="calls-cell" style="font-weight:700;color:var(--brand-orange);">{{ row.total_calls_made }}</td>
           <td style="font-family:monospace;font-size:12px;">{{ row.total_session }}</td>
           <td style="font-family:monospace;font-size:12px;color:var(--brand-orange);font-weight:600;">{{ row.total_call }}</td>
           <td style="font-family:monospace;font-size:12px;color:#D97706;">{{ row.total_disposition }}</td>
@@ -176,25 +176,37 @@ async function pollLiveStatus() {
     const statEl = document.getElementById('stat-online');
     if (statEl) statEl.textContent = data.online_count;
 
-    // Update each row's status cell
-    const map = {};
-    data.agents.forEach(a => { map[a.user_id] = a.is_online; });
+    // Update "Total Calls Today" stat card
+    const callsEl = document.getElementById('stat-total-calls');
+    if (callsEl && data.total_calls_today !== undefined)
+      callsEl.textContent = data.total_calls_today;
+
+    // Build maps for quick lookup
+    const statusMap = {}, callsMap = {};
+    data.agents.forEach(a => {
+      statusMap[a.user_id] = a.is_online;
+      callsMap[a.user_id]  = a.calls_today;
+    });
 
     document.querySelectorAll('#activity-table tbody tr[data-uid]').forEach(row => {
-      const uid  = parseInt(row.dataset.uid);
-      const online = !!map[uid];
-      const cell = row.querySelector('.status-cell');
-      if (!cell) return;
+      const uid    = parseInt(row.dataset.uid);
+      const online = !!statusMap[uid];
 
-      row.classList.toggle('row-online', online);
-      if (online) {
-        cell.innerHTML = '<span class="badge-status badge-active"><span class="status-dot dot-green pulse-dot"></span>Online</span>';
-      } else {
-        // keep "Done" or "Offline" — only change if was previously Online
-        if (cell.querySelector('.dot-green')) {
-          cell.innerHTML = '<span class="badge-status badge-inactive">Done</span>';
+      // Status cell
+      const statusCell = row.querySelector('.status-cell');
+      if (statusCell) {
+        row.classList.toggle('row-online', online);
+        if (online) {
+          statusCell.innerHTML = '<span class="badge-status badge-active"><span class="status-dot dot-green pulse-dot"></span>Online</span>';
+        } else if (statusCell.querySelector('.dot-green')) {
+          statusCell.innerHTML = '<span class="badge-status badge-inactive">Done</span>';
         }
       }
+
+      // Calls Made cell — update live count
+      const callsCell = row.querySelector('.calls-cell');
+      if (callsCell && callsMap[uid] !== undefined)
+        callsCell.textContent = callsMap[uid];
     });
   } catch (e) { /* silent fail */ }
 }

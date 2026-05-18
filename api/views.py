@@ -1577,7 +1577,15 @@ def log_activity_event(request, session_id):
         metadata=request.data.get('metadata') or {},
     )
 
-    if event_type == 'session_end':
+    if event_type == 'call_started':
+        # Increment live so the real-time monitor reflects the call immediately,
+        # without waiting for finalize() at session end.
+        from django.db.models import F
+        DialerSession.objects.filter(pk=session.pk).update(
+            total_calls_made=F('total_calls_made') + 1
+        )
+        AgentProfile.objects.filter(user=request.user).update(last_heartbeat=timezone.now())
+    elif event_type == 'session_end':
         session.finalize()
         AgentProfile.objects.filter(user=request.user).update(last_heartbeat=None)
     else:
@@ -1602,17 +1610,35 @@ def agent_heartbeat(request):
 def admin_live_status(request):
     """
     GET /api/admin/live-status/
-    Per-agent online status for the Live Monitor AJAX poll. Staff only.
+    Per-agent online status + today's live call counts for the Live Monitor poll.
+    Staff only.
     """
     if not request.user.is_staff:
         return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
 
+    today = timezone.now().date()
+
+    # Aggregate today's call count per agent from DialerSession (now live-updated).
+    from django.db.models import Sum
+    calls_by_agent = (
+        DialerSession.objects
+        .filter(session_start__date=today)
+        .values('agent_id')
+        .annotate(calls=Sum('total_calls_made'))
+    )
+    calls_map = {row['agent_id']: row['calls'] or 0 for row in calls_by_agent}
+
     profiles = AgentProfile.objects.filter(is_active=True).select_related('user')
     data = [{
-        'user_id':       p.user_id,
-        'name':          p.user.get_full_name() or p.user.username,
-        'is_online':     p.is_online,
+        'user_id':        p.user_id,
+        'name':           p.user.get_full_name() or p.user.username,
+        'is_online':      p.is_online,
         'last_heartbeat': p.last_heartbeat.isoformat() if p.last_heartbeat else None,
+        'calls_today':    calls_map.get(p.user_id, 0),
     } for p in profiles]
 
-    return Response({'agents': data, 'online_count': sum(1 for d in data if d['is_online'])})
+    return Response({
+        'agents':            data,
+        'online_count':      sum(1 for d in data if d['is_online']),
+        'total_calls_today': sum(d['calls_today'] for d in data),
+    })
