@@ -44,10 +44,10 @@ def agent_list(request):
     ).prefetch_related(
         'assigned_leads', 'call_logs', 'follow_ups', 'agent_profile'
     ).annotate(
-        total_leads=Count('assigned_leads'),
-        total_calls=Count('call_logs'),
-        converted_leads=Count('assigned_leads', filter=Q(assigned_leads__status='converted')),
-        pending_follow_ups=Count('follow_ups', filter=Q(follow_ups__is_completed=False))
+        total_leads=Count('assigned_leads', distinct=True),
+        total_calls=Count('call_logs', distinct=True),
+        converted_leads=Count('assigned_leads', filter=Q(assigned_leads__status='converted'), distinct=True),
+        pending_follow_ups=Count('follow_ups', filter=Q(follow_ups__is_completed=False), distinct=True)
     ).order_by('-date_joined')
     
     # Get today's call counts and calculate conversion rates
