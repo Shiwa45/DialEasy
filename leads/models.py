@@ -25,7 +25,7 @@ class Funnel(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     agents = models.ManyToManyField(
-        User, blank=True, related_name='funnels',
+        User, blank=True, related_name='+',
         help_text='Agents assigned to work leads in this funnel.'
     )
     is_active = models.BooleanField(default=True)
