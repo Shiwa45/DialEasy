@@ -64,9 +64,11 @@ def login_view(request):
         user = authenticate(username=username, password=password)
         
         if user and user.is_active and not user.is_staff:
-            # Create or get token
-            token, created = Token.objects.get_or_create(user=user)
-            
+            # Rotate the token on every login — this invalidates any existing session
+            # on another device, enforcing single active session per agent.
+            Token.objects.filter(user=user).delete()
+            token = Token.objects.create(user=user)
+
             # Get or create agent profile
             agent_profile, profile_created = AgentProfile.objects.get_or_create(
                 user=user,
@@ -76,7 +78,7 @@ def login_view(request):
                     'target_conversions_per_month': 10
                 }
             )
-            
+
             return Response({
                 'token': token.key,
                 'user': UserSerializer(user).data,
@@ -84,6 +86,7 @@ def login_view(request):
                     'department': agent_profile.department or '',
                     'target_calls_per_day': agent_profile.target_calls_per_day,
                     'target_conversions_per_month': agent_profile.target_conversions_per_month,
+                    'dialer_last_lead_id': agent_profile.dialer_last_lead_id,
                 },
                 'message': 'Login successful'
             })
@@ -1603,6 +1606,28 @@ def agent_heartbeat(request):
     """
     AgentProfile.objects.filter(user=request.user).update(last_heartbeat=timezone.now())
     return Response({'status': 'ok'})
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def dialer_progress_view(request):
+    """
+    GET  /api/dialer/progress/  — returns the lead ID the agent last stopped on
+    POST /api/dialer/progress/  — saves that ID (or null to clear after queue completes)
+    """
+    try:
+        profile = AgentProfile.objects.get(user=request.user)
+    except AgentProfile.DoesNotExist:
+        return Response({'last_lead_id': None})
+
+    if request.method == 'POST':
+        lead_id = request.data.get('last_lead_id')
+        AgentProfile.objects.filter(user=request.user).update(
+            dialer_last_lead_id=lead_id
+        )
+        return Response({'status': 'saved'})
+
+    return Response({'last_lead_id': profile.dialer_last_lead_id})
 
 
 @api_view(['GET'])

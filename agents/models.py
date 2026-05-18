@@ -16,6 +16,8 @@ class AgentProfile(models.Model):
     target_conversions_per_month = models.IntegerField(default=10)
     call_recording_enabled = models.BooleanField(default=False)  # Admin toggle for call recording
     last_heartbeat = models.DateTimeField(null=True, blank=True)
+    # Stores the lead ID the agent last stopped on so the dialer can resume there.
+    dialer_last_lead_id = models.IntegerField(null=True, blank=True)
 
     # Role-based access control (tenant-specific)
     ROLE_CHOICES = [

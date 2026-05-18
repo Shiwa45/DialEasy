@@ -100,6 +100,9 @@ urlpatterns = [
     path('activity/session/<int:session_id>/event/', views.log_activity_event,   name='log_activity_event'),
     path('heartbeat/',                               views.agent_heartbeat,      name='agent_heartbeat'),
 
+    # Dialer progress (resume from last position)
+    path('dialer/progress/',                         views.dialer_progress_view, name='dialer_progress'),
+
     # Admin live status (AJAX poll for Live Monitor page)
     path('admin/live-status/',                       views.admin_live_status,    name='admin_live_status'),
 ]
