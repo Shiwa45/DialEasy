@@ -798,3 +798,28 @@ def _fmt(secs):
     """HH:MM:SS helper for templates."""
     h = secs // 3600; m = (secs % 3600) // 60; s = secs % 60
     return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+@login_required
+def change_password(request):
+    if request.method == 'POST':
+        current = request.POST.get('current_password', '')
+        new1 = request.POST.get('new_password', '')
+        new2 = request.POST.get('confirm_password', '')
+
+        if not request.user.check_password(current):
+            messages.error(request, 'Current password is incorrect.')
+        elif len(new1) < 8:
+            messages.error(request, 'New password must be at least 8 characters.')
+        elif new1 != new2:
+            messages.error(request, 'New passwords do not match.')
+        else:
+            request.user.set_password(new1)
+            request.user.save()
+            # Re-authenticate so the session stays valid
+            from django.contrib.auth import update_session_auth_hash
+            update_session_auth_hash(request, request.user)
+            messages.success(request, 'Password changed successfully.')
+            return redirect('agents:change_password')
+
+    return render(request, 'agents/change_password.html')

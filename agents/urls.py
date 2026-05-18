@@ -18,6 +18,7 @@ urlpatterns = [
     # Agent self-service URLs
     path('dashboard/', views.agent_dashboard, name='agent_dashboard'),
     path('my-leads/', views.agent_leads, name='agent_leads'),
+    path('change-password/', views.change_password, name='change_password'),
 
     # Time tracking (admin views)
     path('activity/', views.agent_activity_list, name='agent_activity_list'),

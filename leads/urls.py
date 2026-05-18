@@ -27,6 +27,7 @@ urlpatterns = [
     # Lead deletion
     path('lead/<int:lead_id>/delete/', views.delete_lead, name='delete_lead'),
     path('bulk-delete/', views.bulk_delete_leads, name='bulk_delete_leads'),
+    path('flush/', views.flush_leads, name='flush_leads'),
 
     # Funnels
     path('funnels/', views.funnel_list, name='funnel_list'),

@@ -201,6 +201,21 @@ def bulk_delete_leads(request):
 
 
 @login_required
+@require_POST
+def flush_leads(request):
+    if not request.user.is_staff:
+        messages.error(request, 'Only admins can flush leads.')
+        return redirect('leads:lead_list')
+    # Extra safety: require the confirmation token submitted by the modal
+    if request.POST.get('confirm_token') != 'FLUSH':
+        messages.error(request, 'Flush cancelled — confirmation token did not match.')
+        return redirect('leads:lead_list')
+    deleted_count, _ = Lead.objects.all().delete()
+    messages.success(request, f'All {deleted_count} leads have been permanently deleted.')
+    return redirect('leads:lead_list')
+
+
+@login_required
 def lead_list(request):
     """Display all leads with filtering and search"""
     from leads.models import Funnel
