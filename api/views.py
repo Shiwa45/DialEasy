@@ -646,6 +646,10 @@ def agent_stats(request):
                 'lifetime_total_calls': CallLog.objects.filter(agent=user).count(),
                 'total_leads': leads_in_period.count(),
                 'total_conversions': leads_in_period.filter(status='converted').count(),
+                'conversion_rate': round(
+                    leads_in_period.filter(status='converted').count() / leads_in_period.count() * 100,
+                    2,
+                ) if leads_in_period.count() > 0 else 0,
                 'avg_calls_per_day': round(calls_in_period.count() / days, 2) if days > 0 else 0,
             },
             'daily_performance': daily_performance,
@@ -1703,7 +1707,10 @@ def log_activity_event(request, session_id):
     else:
         AgentProfile.objects.filter(user=request.user).update(last_heartbeat=timezone.now())
 
-    return Response({'event_id': event.pk}, status=status.HTTP_201_CREATED)
+    return Response({
+        'event_id': event.pk,
+        'call_log_id': event.call_log_id,
+    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
