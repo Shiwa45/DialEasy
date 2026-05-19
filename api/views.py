@@ -33,7 +33,56 @@ from .serializers import (
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = 'page_size'
-    max_page_size = 100
+    max_page_size = None
+
+
+AUTODIAL_STARTED_DISPOSITION = 'autodial_started'
+
+
+def _create_autodial_call_log(user, lead, call_date=None):
+    """Create the single source-of-truth call row when autodial initiates."""
+    return CallLog.objects.create(
+        lead=lead,
+        agent=user,
+        call_date=call_date or timezone.now(),
+        disposition=AUTODIAL_STARTED_DISPOSITION,
+        remarks='Autodial initiated call',
+    )
+
+
+def _pending_autodial_call_log(user, lead):
+    return (
+        CallLog.objects
+        .filter(
+            lead=lead,
+            agent=user,
+            disposition=AUTODIAL_STARTED_DISPOSITION,
+            call_date__date=timezone.now().date(),
+        )
+        .order_by('-call_date')
+        .first()
+    )
+
+
+def _apply_call_disposition_workflow(lead, call_log, request_data):
+    from leads.models import Disposition
+
+    triggers_follow_up = False
+    try:
+        disp_config = Disposition.objects.get(value=call_log.disposition)
+        triggers_follow_up = disp_config.triggers_follow_up
+        if disp_config.updates_lead_status:
+            lead.status = disp_config.updates_lead_status
+            lead.save()
+        elif request_data.get('lead_status') in dict(Lead.STATUS_CHOICES):
+            lead.status = request_data['lead_status']
+            lead.save()
+    except Disposition.DoesNotExist:
+        if request_data.get('lead_status') in dict(Lead.STATUS_CHOICES):
+            lead.status = request_data['lead_status']
+            lead.save()
+
+    return triggers_follow_up
 
 # ===============================
 # AUTHENTICATION ENDPOINTS
@@ -469,7 +518,18 @@ def agent_dashboard(request):
         ).select_related('lead').order_by('follow_up_date', 'follow_up_time')[:5]
         
         # Lead status breakdown
-        lead_statuses = Lead.objects.filter(assigned_agent=user).values('status').annotate(count=Count('id'))
+        status_counts = {
+            key: 0
+            for key, _label in Lead.STATUS_CHOICES
+        }
+        status_counts.update({
+            row['status']: row['count']
+            for row in Lead.objects.filter(assigned_agent=user).values('status').annotate(count=Count('id'))
+        })
+        lead_statuses = [
+            {'status': key, 'label': label, 'count': status_counts.get(key, 0)}
+            for key, label in Lead.STATUS_CHOICES
+        ]
         
         # Monthly targets
         current_month = today.replace(day=1)
@@ -500,14 +560,17 @@ def agent_dashboard(request):
             'summary': {
                 'total_leads': total_leads,
                 'new_leads': new_leads,
+                'interested_leads': status_counts.get('interested', 0),
                 'contacted_leads': contacted_leads,
                 'converted_leads': converted_leads,
                 'conversion_rate': conversion_rate,
+                'total_calls': CallLog.objects.filter(agent=user).count(),
                 'today_calls': today_calls,
                 'today_follow_ups': today_follow_ups,
                 'week_calls': week_calls,
             },
-            'lead_statuses': list(lead_statuses),
+            'lead_statuses': lead_statuses,
+            'status_counts': status_counts,
             'recent_calls': CallLogSerializer(recent_calls, many=True).data,
             'upcoming_follow_ups': FollowUpSerializer(upcoming_follow_ups, many=True).data,
             'monthly_targets': target_data,
@@ -580,6 +643,7 @@ def agent_stats(request):
             },
             'summary': {
                 'total_calls': calls_in_period.count(),
+                'lifetime_total_calls': CallLog.objects.filter(agent=user).count(),
                 'total_leads': leads_in_period.count(),
                 'total_conversions': leads_in_period.filter(status='converted').count(),
                 'avg_calls_per_day': round(calls_in_period.count() / days, 2) if days > 0 else 0,
@@ -620,6 +684,40 @@ def create_call_log(request, lead_id):
         )
         
         if serializer.is_valid():
+            pending_call = None
+            call_log_id = request.data.get('call_log_id')
+            if call_log_id:
+                pending_call = CallLog.objects.filter(
+                    id=call_log_id,
+                    lead=lead,
+                    agent=request.user,
+                ).first()
+            if pending_call is None:
+                pending_call = _pending_autodial_call_log(request.user, lead)
+
+            if pending_call and pending_call.disposition == AUTODIAL_STARTED_DISPOSITION:
+                call_log = pending_call
+                call_log.disposition = serializer.validated_data['disposition']
+                call_log.remarks = serializer.validated_data.get('remarks', '')
+                duration = serializer.validated_data.get('duration')
+                if duration is not None:
+                    call_log.duration = duration
+                call_log.save(update_fields=['disposition', 'remarks', 'duration'])
+                LeadActivity.objects.create(
+                    lead=lead,
+                    actor=request.user,
+                    activity_type='call_logged',
+                    description=f'Call updated: {call_log.get_disposition_display()}. Duration: {call_log.duration or "unknown"}',
+                    metadata={'call_log_id': call_log.pk, 'disposition': call_log.disposition},
+                )
+            else:
+                call_log = serializer.save()
+
+            triggers_follow_up = _apply_call_disposition_workflow(lead, call_log, request.data)
+            response_data = CallLogSerializer(call_log).data
+            response_data['triggers_follow_up'] = triggers_follow_up
+            return Response(response_data, status=status.HTTP_201_CREATED)
+
             call_log = serializer.save()
 
             # Apply disposition workflow rules
@@ -1573,16 +1671,25 @@ def log_activity_event(request, session_id):
     if event_type not in valid_types:
         return Response({'error': f'Invalid event_type: {event_type}'}, status=status.HTTP_400_BAD_REQUEST)
 
+    lead = None
+    lead_id = request.data.get('lead_id')
+    if lead_id:
+        lead = get_object_or_404(Lead, id=lead_id, assigned_agent=request.user)
+
     event = CallActivityEvent.objects.create(
         agent=request.user,
         session=session,
         event_type=event_type,
-        lead_id=request.data.get('lead_id'),
+        lead=lead,
         call_log_id=request.data.get('call_log_id'),
         metadata=request.data.get('metadata') or {},
     )
 
     if event_type == 'call_started':
+        if lead and not event.call_log_id:
+            call_log = _create_autodial_call_log(request.user, lead)
+            event.call_log = call_log
+            event.save(update_fields=['call_log'])
         # Increment live so the real-time monitor reflects the call immediately,
         # without waiting for finalize() at session end.
         from django.db.models import F
@@ -1645,13 +1752,12 @@ def admin_live_status(request):
 
     today = timezone.now().date()
 
-    # Aggregate today's call count per agent from DialerSession (now live-updated).
-    from django.db.models import Sum
+    # Aggregate from CallLog so live monitor, lead count, and app stats agree.
     calls_by_agent = (
-        DialerSession.objects
-        .filter(session_start__date=today)
+        CallLog.objects
+        .filter(call_date__date=today)
         .values('agent_id')
-        .annotate(calls=Sum('total_calls_made'))
+        .annotate(calls=Count('id'))
     )
     calls_map = {row['agent_id']: row['calls'] or 0 for row in calls_by_agent}
 

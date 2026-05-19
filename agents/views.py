@@ -722,7 +722,10 @@ def agent_activity_list(request):
         total_call_secs      = sum(s.total_call_time_seconds   for s in sessions)
         total_disp_secs      = sum(s.total_disposition_time_seconds for s in sessions)
         total_idle_secs      = max(0, total_session_secs - total_call_secs - total_disp_secs)
-        total_calls          = sum(s.total_calls_made          for s in sessions)
+        total_calls          = CallLog.objects.filter(
+            agent=agent,
+            call_date__date=selected_date,
+        ).count()
 
         summary_rows.append({
             'agent':               agent,
