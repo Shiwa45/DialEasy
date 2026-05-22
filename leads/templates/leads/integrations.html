@@ -105,8 +105,21 @@
     </div>
     <form method="post">{% csrf_token %}
       <input type="hidden" name="platform" value="indiamart"/>
-      <p style="font-size:13px;color:var(--gray-400);margin-bottom:16px;">Configure this webhook URL in your IndiaMart seller dashboard under Lead Manager → Webhook settings.</p>
-      <div style="display:flex;justify-content:space-between;align-items:center;">
+      <p style="font-size:13px;color:var(--gray-400);margin-bottom:14px;">Paste this URL in your IndiaMart seller dashboard under <strong>Lead Manager → CRM / Webhook</strong>.</p>
+      <div class="form-group">
+        <label class="form-label">CRM API Key <span style="font-weight:400;color:var(--gray-400);">(optional — set in IndiaMart dashboard)</span></label>
+        <input class="form-input" name="verify_token" value="{{ configs.indiamart.verify_token|default:'' }}" placeholder="e.g. abc123xyz — leave blank if not configured"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Default Funnel <span style="font-weight:400;color:var(--gray-400);">(assign IndiaMart leads to)</span></label>
+        <select name="app_id" class="form-input">
+          <option value="">No funnel</option>
+          {% for funnel in funnels %}
+          <option value="{{ funnel.id }}" {% if configs.indiamart and configs.indiamart.app_id == funnel.id|stringformat:"s" %}selected{% endif %}>{{ funnel.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
           <input type="checkbox" name="is_active" {% if configs.indiamart and configs.indiamart.is_active %}checked{% endif %} style="accent-color:var(--orange);"/>
           Enable Integration
@@ -136,8 +149,27 @@
     </div>
     <form method="post">{% csrf_token %}
       <input type="hidden" name="platform" value="justdial"/>
-      <p style="font-size:13px;color:var(--gray-400);margin-bottom:16px;">Add this webhook URL in your JustDial business account under Leads → API Integration.</p>
-      <div style="display:flex;justify-content:space-between;align-items:center;">
+      <p style="font-size:13px;color:var(--gray-400);margin-bottom:14px;">Share this URL with your JustDial account manager under <strong>Leads → API Integration</strong>.</p>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Login ID <span style="font-weight:400;color:var(--gray-400);">(JustDial username)</span></label>
+          <input class="form-input" name="verify_token" value="{{ configs.justdial.verify_token|default:'' }}" placeholder="e.g. JD1234567"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Secure Key <span style="font-weight:400;color:var(--gray-400);">(from JustDial portal)</span></label>
+          <input class="form-input" name="app_secret" type="password" value="{{ configs.justdial.app_secret|default:'' }}" placeholder="••••••••"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Default Funnel <span style="font-weight:400;color:var(--gray-400);">(assign JustDial leads to)</span></label>
+        <select name="app_id" class="form-input">
+          <option value="">No funnel</option>
+          {% for funnel in funnels %}
+          <option value="{{ funnel.id }}" {% if configs.justdial and configs.justdial.app_id == funnel.id|stringformat:"s" %}selected{% endif %}>{{ funnel.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
           <input type="checkbox" name="is_active" {% if configs.justdial and configs.justdial.is_active %}checked{% endif %} style="accent-color:var(--orange);"/>
           Enable Integration

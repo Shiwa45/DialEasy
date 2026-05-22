@@ -251,7 +251,14 @@ def lead_list(request):
     if date_to:
         leads = leads.filter(created_at__date__lte=date_to)
 
-    paginator = Paginator(leads, 25)
+    try:
+        page_size = int(request.GET.get('page_size', 25))
+        if page_size not in (10, 25, 50, 100):
+            page_size = 25
+    except (TypeError, ValueError):
+        page_size = 25
+
+    paginator = Paginator(leads, page_size)
     page_obj = paginator.get_page(request.GET.get('page'))
 
     _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
@@ -269,6 +276,7 @@ def lead_list(request):
         'date_from': date_from,
         'date_to': date_to,
         'status_choices': Lead.STATUS_CHOICES,
+        'page_size': page_size,
     })
 
 
@@ -690,7 +698,7 @@ def debug_csv_upload(request):
                 
             else:
                 try:
-                    df = pd.read_excel(uploaded_file)
+                    df = pd.read_excel(uploaded_file, engine='openpyxl')
                 except Exception as e:
                     debug_info['issues'].append(f'Excel read error: {str(e)}')
                     return JsonResponse(debug_info)
@@ -818,7 +826,7 @@ def check_file_preview(request):
                     lines = content.split('\n')[:6]
             else:
                 # For Excel files, read with pandas
-                df = pd.read_excel(uploaded_file, nrows=5)
+                df = pd.read_excel(uploaded_file, nrows=5, engine='openpyxl')
                 lines = [','.join(df.columns.astype(str))]
                 for _, row in df.iterrows():
                     lines.append(','.join(row.astype(str)))
@@ -841,17 +849,22 @@ def check_file_preview(request):
 @login_required
 def assign_leads(request):
     """Assign leads to agents"""
-    
+    funnel_filter = request.GET.get('funnel', '')
+
     unassigned_leads = Lead.objects.filter(assigned_agent__isnull=True)
+    if funnel_filter:
+        unassigned_leads = unassigned_leads.filter(funnel_id=funnel_filter)
+
     _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
     agents = User.objects.filter(id__in=_tenant_agent_ids, is_active=True)
-    
-    context = {
+    funnels = Funnel.objects.filter(is_active=True)
+
+    return render(request, 'leads/assign_leads.html', {
         'unassigned_leads': unassigned_leads,
         'agents': agents,
-    }
-    
-    return render(request, 'leads/assign_leads.html', context)
+        'funnels': funnels,
+        'funnel_filter': funnel_filter,
+    })
 
 
 @login_required
@@ -865,20 +878,26 @@ def bulk_assign_leads(request):
             if not agents:
                 messages.error(request, 'No active agents available for assignment.')
                 return redirect('leads:assign_leads')
-                
-            unassigned_leads = list(Lead.objects.filter(assigned_agent__isnull=True))
+
+            funnel_id = request.POST.get('funnel_id', '')
+            unassigned_qs = Lead.objects.filter(assigned_agent__isnull=True)
+            if funnel_id:
+                unassigned_qs = unassigned_qs.filter(funnel_id=funnel_id)
+            unassigned_leads = list(unassigned_qs)
+
             if not unassigned_leads:
-                messages.info(request, 'No unassigned leads available.')
+                messages.info(request, 'No unassigned leads available for the selected funnel.')
                 return redirect('leads:assign_leads')
-                
+
             agent_count = len(agents)
             updates = []
             for i, lead in enumerate(unassigned_leads):
                 lead.assigned_agent = agents[i % agent_count]
                 updates.append(lead)
-                
+
             Lead.objects.bulk_update(updates, ['assigned_agent'])
-            messages.success(request, f'Successfully auto-assigned {len(updates)} leads among {agent_count} agent(s).')
+            funnel_label = f' from funnel' if funnel_id else ''
+            messages.success(request, f'Successfully auto-assigned {len(updates)} leads{funnel_label} among {agent_count} agent(s).')
             return redirect('leads:assign_leads')
 
         # Normal bulk assign
@@ -917,6 +936,7 @@ def integrations_view(request):
         return redirect('leads:dashboard')
 
     from leads.integration_models import IntegrationConfig, IntegrationLog
+    from leads.models import Funnel
 
     PLATFORMS = ['meta', 'indiamart', 'justdial', 'whatsapp']
 
@@ -941,7 +961,15 @@ def integrations_view(request):
             config.whatsapp_access_token = request.POST.get('whatsapp_access_token', '').strip()
             config.whatsapp_verify_token = request.POST.get('whatsapp_verify_token', '').strip()
 
-        # IndiaMart and JustDial need no credentials – just activation
+        elif platform == 'indiamart':
+            config.verify_token = request.POST.get('verify_token', '').strip()
+            config.app_id = request.POST.get('app_id', '').strip()
+
+        elif platform == 'justdial':
+            config.verify_token = request.POST.get('verify_token', '').strip()
+            config.app_secret = request.POST.get('app_secret', '').strip()
+            config.app_id = request.POST.get('app_id', '').strip()
+
         config.save()
         messages.success(request, f'{config.get_platform_display()} integration saved successfully.')
         return redirect('leads:integrations')
@@ -960,11 +988,13 @@ def integrations_view(request):
     }
 
     recent_logs = IntegrationLog.objects.order_by('-created_at')[:50]
+    funnels = Funnel.objects.filter(is_active=True)
 
     context = {
         'configs': configs,
         'webhook_urls': webhook_urls,
         'recent_logs': recent_logs,
+        'funnels': funnels,
     }
     return render(request, 'leads/integrations.html', context)
 

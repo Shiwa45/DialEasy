@@ -448,7 +448,7 @@ class FollowUpViewSet(viewsets.ModelViewSet):
     def overdue(self, request):
         """
         Get overdue follow-ups
-        
+
         GET /api/follow-ups/overdue/
         """
         try:
@@ -457,12 +457,34 @@ class FollowUpViewSet(viewsets.ModelViewSet):
                 follow_up_date__lt=today,
                 is_completed=False
             )
-            
+
             serializer = self.get_serializer(follow_ups, many=True)
             return Response(serializer.data)
         except Exception as e:
             return Response(
-                {'error': f'Failed to get overdue follow-ups: {str(e)}'}, 
+                {'error': f'Failed to get overdue follow-ups: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def upcoming(self, request):
+        """
+        Get upcoming follow-ups (from tomorrow onwards)
+
+        GET /api/follow-ups/upcoming/
+        """
+        try:
+            tomorrow = timezone.now().date() + timedelta(days=1)
+            follow_ups = self.get_queryset().filter(
+                follow_up_date__gte=tomorrow,
+                is_completed=False
+            )
+
+            serializer = self.get_serializer(follow_ups, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to get upcoming follow-ups: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1419,6 +1441,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
         return Product.objects.filter(is_active=True).order_by('name')

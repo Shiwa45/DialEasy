@@ -29,6 +29,7 @@ class Command(BaseCommand):
         due_soon = FollowUp.objects.filter(
             is_completed=False,
             follow_up_date=today,
+            agent__isnull=False,
         ).select_related('lead', 'agent')
 
         sent_due = 0
@@ -53,6 +54,7 @@ class Command(BaseCommand):
         overdue = FollowUp.objects.filter(
             is_completed=False,
             follow_up_date__lt=today,
+            agent__isnull=False,
         ).select_related('lead', 'agent')
 
         sent_overdue = 0

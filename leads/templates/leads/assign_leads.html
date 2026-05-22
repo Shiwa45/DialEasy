@@ -10,6 +10,31 @@
   </div>
 </div>
 
+<!-- Funnel Filter + Auto-Assign Bar -->
+<div class="card" style="margin-bottom:16px;">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <form method="get" style="display:flex;gap:10px;align-items:center;flex:1;">
+      <label style="font-size:13px;font-weight:600;white-space:nowrap;">Filter by Funnel:</label>
+      <select name="funnel" class="form-input" style="width:220px;" onchange="this.form.submit()">
+        <option value="">All Funnels ({{ unassigned_leads.count }} leads)</option>
+        {% for funnel in funnels %}
+        <option value="{{ funnel.id }}" {% if funnel_filter == funnel.id|stringformat:"s" %}selected{% endif %}>{{ funnel.name }}</option>
+        {% endfor %}
+      </select>
+      {% if funnel_filter %}<a href="{% url 'leads:assign_leads' %}" class="btn-secondary" style="padding:7px 14px;font-size:13px;">Clear</a>{% endif %}
+    </form>
+    <form method="post" action="{% url 'leads:bulk_assign_leads' %}" style="display:flex;gap:10px;align-items:center;">
+      {% csrf_token %}
+      <input type="hidden" name="auto_assign" value="1"/>
+      <input type="hidden" name="funnel_id" value="{{ funnel_filter }}"/>
+      <button type="submit" class="btn-primary" style="padding:8px 18px;font-size:13px;"
+              onclick="return confirm('Auto-assign {{ unassigned_leads.count }} leads round-robin to all agents?')">
+        ⚡ Auto-Assign{% if funnel_filter %} Filtered{% endif %} ({{ unassigned_leads.count }})
+      </button>
+    </form>
+  </div>
+</div>
+
 {% if unassigned_leads %}
 <form method="post" action="{% url 'leads:bulk_assign_leads' %}">
   {% csrf_token %}

@@ -8,4 +8,5 @@ urlpatterns = [
     path('<int:notification_id>/read/', views.mark_read,        name='notification_mark_read'),
     path('fcm-token/',              views.register_fcm_token,   name='fcm_token_register'),
     path('fcm-token/remove/',       views.deregister_fcm_token, name='fcm_token_remove'),
+    path('trigger-reminders/',      views.trigger_reminders,    name='trigger_reminders'),
 ]

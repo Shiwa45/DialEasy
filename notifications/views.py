@@ -4,7 +4,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
@@ -121,3 +121,18 @@ def deregister_fcm_token(request):
     token = request.data.get('token', '').strip()
     deleted, _ = FCMToken.objects.filter(agent=request.user, token=token).delete()
     return Response({'deleted': deleted > 0})
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def trigger_reminders(request):
+    """
+    POST /api/notifications/trigger-reminders/
+    Admin-only. Runs the follow-up reminder job immediately.
+    Useful for testing or in environments without cron.
+    """
+    from django.core.management import call_command
+    from io import StringIO
+    out = StringIO()
+    call_command('send_followup_reminders', stdout=out)
+    return Response({'result': out.getvalue().strip()})
