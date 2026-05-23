@@ -11,7 +11,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.http import JsonResponse, HttpResponse
 from django.core.paginator import Paginator
-from .models import Lead, CallLog, FollowUp, LeadUpload
+from .models import Funnel, Lead, CallLog, FollowUp, LeadUpload
 from agents.models import AgentProfile
 import csv
 import io
