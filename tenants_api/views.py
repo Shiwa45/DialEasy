@@ -104,11 +104,27 @@ class TenantLoginView(APIView):
 
         tokens = generate_tokens_for_user(user, tenant)
 
+        agent_profile = None
+        try:
+            p = user.agent_profile
+            agent_profile = {
+                "department":                  p.department or "",
+                "phone":                       p.phone or "",
+                "hire_date":                   p.hire_date.isoformat() if p.hire_date else None,
+                "target_calls_per_day":        p.target_calls_per_day,
+                "target_conversions_per_month": p.target_conversions_per_month,
+                "is_active":                   p.is_active,
+                "call_recording_enabled":      p.call_recording_enabled,
+            }
+        except Exception:
+            pass
+
         return Response(
             {
                 **tokens,
-                "user":   MobileUserProfileSerializer(user).data,
-                "tenant": TenantInfoSerializer(tenant, context={"request": request}).data,
+                "user":          MobileUserProfileSerializer(user).data,
+                "tenant":        TenantInfoSerializer(tenant, context={"request": request}).data,
+                "agent_profile": agent_profile,
             },
             status=status.HTTP_200_OK,
         )
@@ -215,10 +231,27 @@ class MobileProfileView(APIView):
     def get(self, request):
         user   = request.user
         tenant = request.tenant
+
+        agent_profile = None
+        try:
+            p = user.agent_profile
+            agent_profile = {
+                "department":                  p.department or "",
+                "phone":                       p.phone or "",
+                "hire_date":                   p.hire_date.isoformat() if p.hire_date else None,
+                "target_calls_per_day":        p.target_calls_per_day,
+                "target_conversions_per_month": p.target_conversions_per_month,
+                "is_active":                   p.is_active,
+                "call_recording_enabled":      p.call_recording_enabled,
+            }
+        except Exception:
+            pass
+
         return Response(
             {
-                "user":   MobileUserProfileSerializer(user).data,
-                "tenant": TenantInfoSerializer(tenant, context={"request": request}).data,
+                "user":          MobileUserProfileSerializer(user).data,
+                "tenant":        TenantInfoSerializer(tenant, context={"request": request}).data,
+                "agent_profile": agent_profile,
             }
         )
 

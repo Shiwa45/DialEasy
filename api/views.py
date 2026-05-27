@@ -133,8 +133,12 @@ def login_view(request):
                 'user': UserSerializer(user).data,
                 'agent_profile': {
                     'department': agent_profile.department or '',
+                    'phone': agent_profile.phone or '',
+                    'hire_date': agent_profile.hire_date.isoformat() if agent_profile.hire_date else None,
                     'target_calls_per_day': agent_profile.target_calls_per_day,
                     'target_conversions_per_month': agent_profile.target_conversions_per_month,
+                    'is_active': agent_profile.is_active,
+                    'call_recording_enabled': agent_profile.call_recording_enabled,
                     'dialer_last_lead_id': agent_profile.dialer_last_lead_id,
                 },
                 'message': 'Login successful'
@@ -188,10 +192,11 @@ def profile_view(request):
             'agent_profile': {
                 'department': agent_profile.department or '',
                 'phone': agent_profile.phone or '',
-                'hire_date': agent_profile.hire_date,
+                'hire_date': agent_profile.hire_date.isoformat() if agent_profile.hire_date else None,
                 'target_calls_per_day': agent_profile.target_calls_per_day,
                 'target_conversions_per_month': agent_profile.target_conversions_per_month,
                 'is_active': agent_profile.is_active,
+                'call_recording_enabled': agent_profile.call_recording_enabled,
             }
         })
     except Exception as e:
