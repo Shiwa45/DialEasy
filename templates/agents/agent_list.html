@@ -76,7 +76,8 @@
               </div>
               <div>
                 <div style="font-size:13px;font-weight:600;">{{ agent.get_full_name|default:agent.username }}</div>
-                <div style="font-size:11px;color:#94A3B8;">{{ agent.email }}</div>
+                <div style="font-size:11px;color:#94A3B8;">@{{ agent.username }}</div>
+                <div style="font-size:11px;color:#CBD5E1;">{{ agent.email }}</div>
               </div>
             </div>
           </td>
@@ -116,6 +117,13 @@
               <a href="{% url 'agents:update_agent' agent.id %}" class="icon-btn" title="Edit" style="width:28px;height:28px;font-size:14px;color:var(--brand-orange);border-color:var(--brand-orange-mid);">
                 <i class="bi bi-pencil"></i>
               </a>
+              {% if agent.agent_profile.role == 'agent' %}
+              <button type="button" class="icon-btn" title="Delete"
+                style="width:28px;height:28px;font-size:14px;color:#EF4444;border-color:#FECACA;"
+                onclick="confirmDelete('{% url 'agents:delete_agent' agent.id %}', '{{ agent.get_full_name|default:agent.username|escapejs }}', '@{{ agent.username|escapejs }}')">
+                <i class="bi bi-trash3"></i>
+              </button>
+              {% endif %}
             </div>
           </td>
         </tr>
@@ -171,4 +179,50 @@
   </div>
   {% endif %}
 </div>
+
+<!-- Delete confirmation modal -->
+<div id="deleteModal" style="display:none;position:fixed;inset:0;z-index:1050;background:rgba(0,0,0,.45);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.2);">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <div style="width:40px;height:40px;border-radius:50%;background:#FEF2F2;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="bi bi-exclamation-triangle-fill" style="color:#EF4444;font-size:18px;"></i>
+      </div>
+      <div>
+        <div style="font-size:15px;font-weight:700;color:#1E293B;">Delete Agent</div>
+        <div id="deleteModalSub" style="font-size:12px;color:#64748B;"></div>
+      </div>
+    </div>
+    <p style="font-size:13px;color:#475569;margin-bottom:20px;">
+      This will permanently remove the agent account and cannot be undone.
+      Leads assigned to this agent will become unassigned.
+    </p>
+    <form id="deleteForm" method="post">
+      {% csrf_token %}
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" onclick="closeDeleteModal()"
+          style="padding:8px 18px;border-radius:8px;border:1px solid #CBD5E1;background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:#475569;">
+          Cancel
+        </button>
+        <button type="submit"
+          style="padding:8px 18px;border-radius:8px;border:none;background:#EF4444;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+          Delete Agent
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function confirmDelete(deleteUrl, agentName, agentUsername) {
+  document.getElementById('deleteModalSub').textContent = agentName + ' ' + agentUsername;
+  document.getElementById('deleteForm').action = deleteUrl;
+  document.getElementById('deleteModal').style.display = 'flex';
+}
+function closeDeleteModal() {
+  document.getElementById('deleteModal').style.display = 'none';
+}
+document.getElementById('deleteModal').addEventListener('click', function(e) {
+  if (e.target === this) closeDeleteModal();
+});
+</script>
 {% endblock %}

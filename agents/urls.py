@@ -11,6 +11,7 @@ urlpatterns = [
     path('<int:agent_id>/', views.agent_detail, name='agent_detail'),
     path('<int:agent_id>/performance/', views.agent_performance, name='agent_performance'),
     path('<int:agent_id>/update/', views.update_agent, name='update_agent'),
+    path('<int:agent_id>/delete/', views.delete_agent, name='delete_agent'),
     path('<int:agent_id>/note/', views.add_agent_note, name='add_agent_note'),
     path('<int:agent_id>/targets/', views.set_agent_targets, name='set_agent_targets'),
     path('<int:agent_id>/stats/', views.agent_stats_ajax, name='agent_stats_ajax'),

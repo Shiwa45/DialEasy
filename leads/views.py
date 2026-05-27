@@ -855,7 +855,7 @@ def assign_leads(request):
     if funnel_filter:
         unassigned_leads = unassigned_leads.filter(funnel_id=funnel_filter)
 
-    _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+    _tenant_agent_ids = AgentProfile.objects.filter(role='agent').values_list('user_id', flat=True)
     agents = User.objects.filter(id__in=_tenant_agent_ids, is_active=True)
     funnels = Funnel.objects.filter(is_active=True)
 
@@ -873,7 +873,7 @@ def bulk_assign_leads(request):
     
     if request.method == 'POST':
         if request.POST.get('auto_assign'):
-            _tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+            _tenant_agent_ids = AgentProfile.objects.filter(role='agent').values_list('user_id', flat=True)
             agents = list(User.objects.filter(id__in=_tenant_agent_ids, is_active=True))
             if not agents:
                 messages.error(request, 'No active agents available for assignment.')
@@ -913,16 +913,21 @@ def bulk_assign_leads(request):
             return redirect('leads:assign_leads')
         
         try:
-            agent = User.objects.get(id=agent_id)
+            agent = User.objects.get(
+                id=agent_id,
+                is_active=True,
+                agent_profile__role='agent',
+                agent_profile__is_active=True,
+            )
             updated_count = Lead.objects.filter(
                 id__in=lead_ids
             ).update(assigned_agent=agent)
-            
+
             messages.success(
-                request, 
+                request,
                 f'Successfully assigned {updated_count} leads to {agent.username}.'
             )
-            
+
         except User.DoesNotExist:
             messages.error(request, 'Selected agent does not exist.')
     return redirect('leads:assign_leads')

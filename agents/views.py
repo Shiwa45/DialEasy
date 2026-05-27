@@ -35,9 +35,9 @@ def is_admin(user):
 def agent_list(request):
     """Display all agents with their basic stats"""
     
-    # Scope to this tenant: AgentProfile is in the tenant schema so values_list
-    # returns only IDs belonging to the current tenant.
-    tenant_agent_ids = AgentProfile.objects.values_list('user_id', flat=True)
+    # Scope to this tenant's non-admin users only.
+    # Exclude role='admin' so the tenant admin doesn't see themselves in the list.
+    tenant_agent_ids = AgentProfile.objects.exclude(role='admin').values_list('user_id', flat=True)
     agents = User.objects.filter(
         id__in=tenant_agent_ids,
         is_active=True,
@@ -395,6 +395,25 @@ def agent_performance(request, agent_id):
     }
     
     return render(request, 'agents/agent_performance.html', context)
+
+
+@login_required
+@user_passes_test(is_admin)
+def delete_agent(request, agent_id):
+    """Permanently delete an agent account (role='agent' only)."""
+    agent = get_object_or_404(User, id=agent_id, agent_profile__role='agent')
+
+    if agent == request.user:
+        messages.error(request, 'You cannot delete your own account.')
+        return redirect('agents:agent_list')
+
+    if request.method == 'POST':
+        display_name = agent.get_full_name() or agent.username
+        agent.delete()
+        messages.success(request, f'Agent "{display_name}" has been deleted.')
+        return redirect('agents:agent_list')
+
+    return redirect('agents:agent_list')
 
 
 @login_required
