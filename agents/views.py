@@ -447,7 +447,26 @@ def update_agent(request, agent_id):
             agent_profile.target_calls_per_day = int(request.POST.get('target_calls_per_day', 50))
             agent_profile.target_conversions_per_month = int(request.POST.get('target_conversions_per_month', 10))
             agent_profile.is_active = request.POST.get('is_active') == 'on'
-            
+            agent_profile.call_recording_enabled = request.POST.get('call_recording_enabled') == 'on'
+            agent_profile.role = request.POST.get('role', agent_profile.role)
+
+            hire_date_str = request.POST.get('hire_date', '').strip()
+            if hire_date_str:
+                from datetime import date as _date
+                agent_profile.hire_date = _date.fromisoformat(hire_date_str)
+
+            # Optional password change
+            new_password = request.POST.get('new_password', '').strip()
+            confirm_password = request.POST.get('confirm_password', '').strip()
+            if new_password:
+                if len(new_password) < 8:
+                    messages.error(request, 'New password must be at least 8 characters.')
+                    return redirect('agents:update_agent', agent_id=agent.id)
+                if new_password != confirm_password:
+                    messages.error(request, 'Passwords do not match.')
+                    return redirect('agents:update_agent', agent_id=agent.id)
+                agent.set_password(new_password)
+
             agent.save()
             agent_profile.save()
             
