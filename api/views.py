@@ -14,6 +14,7 @@ from django.db.models import Count, Q, Sum
 from django.http import JsonResponse
 from datetime import datetime, timedelta
 import json
+import os
 
 from leads.models import (
     Lead, CallLog, FollowUp,
@@ -1757,15 +1758,15 @@ def start_dialer_session(request):
     profile = AgentProfile.objects.filter(user=request.user).first()
     
     return Response({
-         'session_id': session.pk,
-         'recording_settings': {
-             'enabled': tenant_has_feature(request, 'call_recording') and (profile.call_recording_enabled if profile else False),
-             'format': 'mp3',
-             'auto_start': True
-         },
-         'call_recording_enabled': tenant_has_feature(request, 'call_recording') and (profile.call_recording_enabled if profile else False),
-         'recording_enabled': tenant_has_feature(request, 'call_recording') and (profile.call_recording_enabled if profile else False),
-     }, status=status.HTTP_201_CREATED)
+        'session_id': session.pk,
+        'recording_settings': {
+            'enabled': tenant_has_feature(request, 'call_recording') and (profile.call_recording_enabled if profile else False),
+            'format': 'mp3',
+            'auto_start': True
+        },
+        'call_recording_enabled': tenant_has_feature(request, 'call_recording') and (profile.call_recording_enabled if profile else False),
+        'recording_enabled': tenant_has_feature(request, 'call_recording') and (profile.call_recording_enabled if profile else False),
+    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
