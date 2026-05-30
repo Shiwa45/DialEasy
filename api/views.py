@@ -1706,6 +1706,8 @@ def app_config(request):
             'lead_statuses': [{'value': k, 'label': v} for k, v in Lead.STATUS_CHOICES],
             'call_dispositions': _get_dispositions_for_config(),
             'features': features,
+            'call_recording_enabled': agent_profile.call_recording_enabled,
+            'recording_enabled': agent_profile.call_recording_enabled,
             'follow_up_priorities': [{'value': k, 'label': v} for k, v in [
                 ('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('urgent', 'Urgent')
             ]],
@@ -1724,6 +1726,7 @@ def app_config(request):
                 'offline_mode_enabled': True,
                 'lead_scoring_enabled': True,
                 'call_recording_enabled': agent_profile.call_recording_enabled,
+                'recording_enabled': agent_profile.call_recording_enabled,
             },
             'score_thresholds': {
                 'hot': 75,
@@ -1749,7 +1752,20 @@ def start_dialer_session(request):
     """
     session = DialerSession.objects.create(agent=request.user)
     AgentProfile.objects.filter(user=request.user).update(last_heartbeat=timezone.now())
-    return Response({'session_id': session.pk}, status=status.HTTP_201_CREATED)
+    
+    from tenants.feature_gates import tenant_has_feature
+    profile = AgentProfile.objects.filter(user=request.user).first()
+    
+    return Response({
+         'session_id': session.pk,
+         'recording_settings': {
+             'enabled': tenant_has_feature(request, 'call_recording') and (profile.call_recording_enabled if profile else False),
+             'format': 'mp3',
+             'auto_start': True
+         },
+         'call_recording_enabled': tenant_has_feature(request, 'call_recording') and (profile.call_recording_enabled if profile else False),
+         'recording_enabled': tenant_has_feature(request, 'call_recording') and (profile.call_recording_enabled if profile else False),
+     }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
@@ -1781,13 +1797,37 @@ def log_activity_event(request, session_id):
         metadata=request.data.get('metadata') or {},
     )
 
+    # Additional context for call_started
+    response_data = {
+        'event_id': event.pk,
+        'call_log_id': event.call_log_id,
+    }
+
     if event_type == 'call_started':
+        from tenants.feature_gates import tenant_has_feature
+        profile = AgentProfile.objects.filter(user=request.user).first()
+        
+        # Explicitly tell the app if it should record this call
+        has_feature = tenant_has_feature(request, 'call_recording')
+        agent_enabled = profile.call_recording_enabled if profile else False
+        
+        response_data['should_record'] = has_feature and agent_enabled
+         response_data['recording_enabled'] = has_feature and agent_enabled
+         response_data['call_recording_enabled'] = has_feature and agent_enabled
+         response_data['recording_config'] = {
+            'upload_url': request.build_absolute_uri(f'/api/call-logs/{event.call_log_id}/upload-recording/') if event.call_log_id else None,
+            'format': 'mp3',
+            'bitrate': 128
+        }
+
         if lead and not event.call_log_id:
             call_log = _create_autodial_call_log(request.user, lead)
             event.call_log = call_log
             event.save(update_fields=['call_log'])
-        # Increment live so the real-time monitor reflects the call immediately,
-        # without waiting for finalize() at session end.
+            response_data['call_log_id'] = call_log.pk
+            response_data['recording_config']['upload_url'] = request.build_absolute_uri(f'/api/call-logs/{call_log.pk}/upload-recording/')
+
+        # Increment live so the real-time monitor reflects the call immediately
         from django.db.models import F
         DialerSession.objects.filter(pk=session.pk).update(
             total_calls_made=F('total_calls_made') + 1
@@ -1799,10 +1839,7 @@ def log_activity_event(request, session_id):
     else:
         AgentProfile.objects.filter(user=request.user).update(last_heartbeat=timezone.now())
 
-    return Response({
-        'event_id': event.pk,
-        'call_log_id': event.call_log_id,
-    }, status=status.HTTP_201_CREATED)
+    return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
