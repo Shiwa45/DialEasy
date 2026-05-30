@@ -46,19 +46,48 @@ def _count_filler_words(text: str) -> int:
 def transcribe_recording(call_log) -> dict:
     """
     Send the call recording to Whisper API for transcription.
+    Handles both local files and Cloudinary URLs.
     Returns a dict with: full_text, segments, language, duration_seconds.
     Raises on failure.
     """
     if not OPENAI_API_KEY:
         raise ValueError('OPENAI_API_KEY not set in environment.')
 
-    recording_path = call_log.recording.path
-    if not os.path.exists(recording_path):
-        raise FileNotFoundError(f'Recording file not found: {recording_path}')
+    import tempfile
+    import requests
+    from django.core.files.base import ContentFile
 
-    with open(recording_path, 'rb') as audio_file:
+    temp_audio_path = None
+    audio_file_obj = None
+
+    try:
+        if call_log.recording_url:
+            # Download from Cloudinary to a temporary file
+            resp = requests.get(call_log.recording_url, timeout=60)
+            resp.raise_for_status()
+            
+            suffix = '.mp3'
+            if '.m4a' in call_log.recording_url: suffix = '.m4a'
+            elif '.wav' in call_log.recording_url: suffix = '.wav'
+            
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            temp_file.write(resp.content)
+            temp_file.close()
+            temp_audio_path = temp_file.name
+            audio_file_obj = open(temp_audio_path, 'rb')
+            filename = os.path.basename(temp_audio_path)
+        elif call_log.recording:
+            # Use local file
+            recording_path = call_log.recording.path
+            if not os.path.exists(recording_path):
+                raise FileNotFoundError(f'Recording file not found: {recording_path}')
+            audio_file_obj = open(recording_path, 'rb')
+            filename = os.path.basename(recording_path)
+        else:
+            raise ValueError('CallLog has no recording or recording_url.')
+
         files = {
-            'file': (os.path.basename(recording_path), audio_file, 'audio/m4a'),
+            'file': (filename, audio_file_obj, 'audio/mpeg'),
             'model': (None, 'whisper-1'),
             'response_format': (None, 'verbose_json'),
             'timestamp_granularities[]': (None, 'segment'),
@@ -71,6 +100,11 @@ def transcribe_recording(call_log) -> dict:
         )
         resp.raise_for_status()
         data = resp.json()
+    finally:
+        if audio_file_obj:
+            audio_file_obj.close()
+        if temp_audio_path and os.path.exists(temp_audio_path):
+            os.remove(temp_audio_path)
 
     segments = []
     for seg in data.get('segments', []):

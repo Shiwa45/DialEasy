@@ -124,13 +124,28 @@ def login_view(request):
                 defaults={
                     'hire_date': timezone.now().date(),
                     'target_calls_per_day': 50,
-                    'target_conversions_per_month': 10
+                    'target_conversions_per_month': 10,
+                    'call_recording_enabled': True,
                 }
             )
+
+            # Tenant info & features
+            tenant = getattr(request, 'tenant', None)
+            tenant_info = None
+            features = []
+            if tenant:
+                tenant_info = {
+                    'name': tenant.name,
+                    'schema_name': tenant.schema_name,
+                    'logo': request.build_absolute_uri(tenant.logo.url) if tenant.logo else None,
+                }
+                features = tenant.get_enabled_features()
 
             return Response({
                 'token': token.key,
                 'user': UserSerializer(user).data,
+                'tenant': tenant_info,
+                'features': features,
                 'agent_profile': {
                     'department': agent_profile.department or '',
                     'phone': agent_profile.phone or '',
@@ -183,12 +198,27 @@ def profile_view(request):
             defaults={
                 'hire_date': timezone.now().date(),
                 'target_calls_per_day': 50,
-                'target_conversions_per_month': 10
+                'target_conversions_per_month': 10,
+                'call_recording_enabled': True,
             }
         )
         
+        # Tenant info & features
+        tenant = getattr(request, 'tenant', None)
+        tenant_info = None
+        features = []
+        if tenant:
+            tenant_info = {
+                'name': tenant.name,
+                'schema_name': tenant.schema_name,
+                'logo': request.build_absolute_uri(tenant.logo.url) if tenant.logo else None,
+            }
+            features = tenant.get_enabled_features()
+
         return Response({
             'user': UserSerializer(request.user).data,
+            'tenant': tenant_info,
+            'features': features,
             'agent_profile': {
                 'department': agent_profile.department or '',
                 'phone': agent_profile.phone or '',
@@ -1139,6 +1169,52 @@ def sync_download_data(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+def _upload_recording_to_cloudinary(recording_file, call_log, request):
+    """
+    Helper to upload a recording to Cloudinary.
+    Returns the secure URL on success, or None if Cloudinary is not configured.
+    """
+    import cloudinary
+    import cloudinary.uploader
+    from django.conf import settings as dj_settings
+
+    # 1. Check if configured in environment/settings
+    cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME')
+    api_key = os.getenv('CLOUDINARY_API_KEY')
+    api_secret = os.getenv('CLOUDINARY_API_SECRET')
+
+    # If not in env, check the active config object
+    cfg = cloudinary.config()
+    if not (cloud_name and api_key and api_secret):
+        cloud_name = cfg.cloud_name
+        api_key = cfg.api_key
+        api_secret = cfg.api_secret
+
+    if not (cloud_name and api_key and api_secret):
+        return None
+
+    # 2. Perform upload
+    try:
+        tenant_slug = getattr(request, 'tenant', None)
+        tenant_slug = tenant_slug.schema_name if tenant_slug else 'default'
+        
+        folder = f'dialeasy/{tenant_slug}/recordings'
+        result = cloudinary.uploader.upload(
+            recording_file,
+            resource_type='video',   # Cloudinary uses 'video' for audio files
+            folder=folder,
+            public_id=f'calllog_{call_log.pk}',
+            overwrite=True,
+            format='mp3',
+        )
+        return result.get('secure_url')
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Cloudinary upload failed: {str(e)}")
+        return None
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def upload_call_recording(request, lead_id):
@@ -1147,6 +1223,10 @@ def upload_call_recording(request, lead_id):
     Uploads a call recording to Cloudinary and stores the secure URL.
     Falls back to local storage if Cloudinary is not configured.
     """
+    from tenants.feature_gates import tenant_has_feature
+    if not tenant_has_feature(request, 'call_recording'):
+        return Response({'error': 'Call recording feature is not enabled for this tenant'}, status=status.HTTP_403_FORBIDDEN)
+
     try:
         lead = get_object_or_404(Lead, id=lead_id, assigned_agent=request.user)
         recording_file = request.FILES.get('recording')
@@ -1154,35 +1234,20 @@ def upload_call_recording(request, lead_id):
         if not recording_file:
             return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
 
-        call_log = CallLog.objects.filter(lead=lead, agent=request.user).first()
+        # Get the MOST RECENT call log for this lead/agent
+        call_log = CallLog.objects.filter(lead=lead, agent=request.user).order_by('-call_date').first()
         if not call_log:
             return Response({'error': 'No call log found for this lead'}, status=status.HTTP_404_NOT_FOUND)
 
         call_log.recording_size = recording_file.size
 
-        # Try Cloudinary upload; fall back to local storage if not configured
-        from django.conf import settings as dj_settings
-        import cloudinary.uploader
-        cloud_name = getattr(dj_settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME') or \
-                     (cloudinary.config().cloud_name if cloudinary.config().cloud_name else None)
-        # Determine if cloudinary is configured
-        import cloudinary as _cloudinary
-        _cfg = _cloudinary.config()
-        if _cfg.cloud_name and _cfg.api_key and _cfg.api_secret:
-            tenant_slug = getattr(request, 'tenant', None)
-            tenant_slug = tenant_slug.schema_name if tenant_slug else 'default'
-            folder = f'dialeasy/{tenant_slug}/recordings'
-            result = cloudinary.uploader.upload(
-                recording_file,
-                resource_type='video',   # Cloudinary uses 'video' for audio files
-                folder=folder,
-                public_id=f'calllog_{call_log.pk}',
-                overwrite=True,
-                format='mp3',
-            )
-            call_log.recording_url = result['secure_url']
+        # Try Cloudinary upload
+        recording_url = _upload_recording_to_cloudinary(recording_file, call_log, request)
+        
+        if recording_url:
+            call_log.recording_url = recording_url
         else:
-            # No Cloudinary configured — save locally
+            # Fall back to local storage
             call_log.recording = recording_file
 
         call_log.save()
@@ -1190,7 +1255,6 @@ def upload_call_recording(request, lead_id):
         # Trigger AI transcription if tenant has the feature
         try:
             from ai.transcription_service import process_call_recording
-            from tenants.feature_gates import tenant_has_feature
             if tenant_has_feature(request, 'ai_transcription'):
                 process_call_recording(call_log.id)
         except Exception:
@@ -1210,6 +1274,10 @@ def upload_call_recording_by_log(request, call_log_id):
     Mobile app calls this with the call_log_id returned from createCallLog.
     Uploads recording to Cloudinary; falls back to local storage.
     """
+    from tenants.feature_gates import tenant_has_feature
+    if not tenant_has_feature(request, 'call_recording'):
+        return Response({'error': 'Call recording feature is not enabled for this tenant'}, status=status.HTTP_403_FORBIDDEN)
+
     try:
         call_log = get_object_or_404(CallLog, pk=call_log_id, agent=request.user)
         recording_file = request.FILES.get('recording')
@@ -1218,29 +1286,19 @@ def upload_call_recording_by_log(request, call_log_id):
 
         call_log.recording_size = recording_file.size
 
-        import cloudinary as _cloudinary
-        import cloudinary.uploader
-        _cfg = _cloudinary.config()
-        if _cfg.cloud_name and _cfg.api_key and _cfg.api_secret:
-            tenant_slug = getattr(request, 'tenant', None)
-            tenant_slug = tenant_slug.schema_name if tenant_slug else 'default'
-            result = cloudinary.uploader.upload(
-                recording_file,
-                resource_type='video',
-                folder=f'dialeasy/{tenant_slug}/recordings',
-                public_id=f'calllog_{call_log.pk}',
-                overwrite=True,
-                format='mp3',
-            )
-            call_log.recording_url = result['secure_url']
+        # Try Cloudinary upload
+        recording_url = _upload_recording_to_cloudinary(recording_file, call_log, request)
+        
+        if recording_url:
+            call_log.recording_url = recording_url
         else:
+            # Fall back to local storage
             call_log.recording = recording_file
 
         call_log.save()
 
         try:
             from ai.transcription_service import process_call_recording
-            from tenants.feature_gates import tenant_has_feature
             if tenant_has_feature(request, 'ai_transcription'):
                 process_call_recording(call_log.id)
         except Exception:
@@ -1640,9 +1698,14 @@ def app_config(request):
 
         products = ProductSerializer(Product.objects.filter(is_active=True), many=True).data
 
+        # Tenant features
+        tenant = getattr(request, 'tenant', None)
+        features = tenant.get_enabled_features() if tenant else []
+
         return Response({
             'lead_statuses': [{'value': k, 'label': v} for k, v in Lead.STATUS_CHOICES],
             'call_dispositions': _get_dispositions_for_config(),
+            'features': features,
             'follow_up_priorities': [{'value': k, 'label': v} for k, v in [
                 ('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('urgent', 'Urgent')
             ]],
@@ -1660,6 +1723,7 @@ def app_config(request):
                 'notification_enabled': True,
                 'offline_mode_enabled': True,
                 'lead_scoring_enabled': True,
+                'call_recording_enabled': agent_profile.call_recording_enabled,
             },
             'score_thresholds': {
                 'hot': 75,

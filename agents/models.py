@@ -14,7 +14,7 @@ class AgentProfile(models.Model):
     is_active = models.BooleanField(default=True)
     target_calls_per_day = models.IntegerField(default=50)
     target_conversions_per_month = models.IntegerField(default=10)
-    call_recording_enabled = models.BooleanField(default=False)  # Admin toggle for call recording
+    call_recording_enabled = models.BooleanField(default=True)   # Admin toggle for call recording
     last_heartbeat = models.DateTimeField(null=True, blank=True)
     # Stores the lead ID the agent last stopped on so the dialer can resume there.
     dialer_last_lead_id = models.IntegerField(null=True, blank=True)
