@@ -1812,9 +1812,9 @@ def log_activity_event(request, session_id):
         agent_enabled = profile.call_recording_enabled if profile else False
         
         response_data['should_record'] = has_feature and agent_enabled
-         response_data['recording_enabled'] = has_feature and agent_enabled
-         response_data['call_recording_enabled'] = has_feature and agent_enabled
-         response_data['recording_config'] = {
+        response_data['recording_enabled'] = has_feature and agent_enabled
+        response_data['call_recording_enabled'] = has_feature and agent_enabled
+        response_data['recording_config'] = {
             'upload_url': request.build_absolute_uri(f'/api/call-logs/{event.call_log_id}/upload-recording/') if event.call_log_id else None,
             'format': 'mp3',
             'bitrate': 128
