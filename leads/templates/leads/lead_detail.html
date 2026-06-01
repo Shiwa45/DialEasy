@@ -70,7 +70,18 @@
             <span class="badge badge-gray" style="margin-left:8px;">{{ call.duration|default:0 }}s</span>
           </div>
           <div class="timeline-sub">By {{ call.agent.get_full_name|default:call.agent.username }}{% if call.notes %} · {{ call.notes|truncatewords:12 }}{% endif %}</div>
-          {% if call.recording %}
+          {% if call.recording_url %}
+          <div style="margin-top:10px;padding:10px;background:var(--gray-100);border-radius:8px;display:flex;align-items:center;gap:12px;">
+            <i class="fas fa-microphone" style="color:var(--orange);"></i>
+            <audio controls style="height:30px;">
+              <source src="{{ call.recording_url }}" type="audio/mpeg">
+              Your browser does not support the audio element.
+            </audio>
+            <a href="{{ call.recording_url }}" download class="btn-secondary" style="padding:4px 8px;font-size:12px;">
+              <i class="fas fa-download"></i>
+            </a>
+          </div>
+          {% elif call.recording %}
           <div style="margin-top:10px;padding:10px;background:var(--gray-100);border-radius:8px;display:flex;align-items:center;gap:12px;">
             <i class="fas fa-microphone" style="color:var(--orange);"></i>
             <audio controls style="height:30px;">

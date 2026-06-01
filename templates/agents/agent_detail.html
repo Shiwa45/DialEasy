@@ -147,8 +147,8 @@
                   <td><span class="badge-status badge-contacted">{{ call.get_disposition_display }}</span></td>
                   <td style="font-size:12px;">{% if call.duration %}{{ call.duration }}s{% else %}—{% endif %}</td>
                   <td>
-                    {% if call.recording %}
-                    <a href="{{ call.recording.url }}" target="_blank" class="icon-btn" title="Play Recording" style="width:28px;height:28px;font-size:14px;color:var(--brand-green);">
+                    {% if call.recording_url or call.recording %}
+                    <a href="{% if call.recording_url %}{{ call.recording_url }}{% else %}{{ call.recording.url }}{% endif %}" target="_blank" class="icon-btn" title="Play Recording" style="width:28px;height:28px;font-size:14px;color:var(--brand-green);">
                       <i class="bi bi-play-circle"></i>
                     </a>
                     {% else %}
