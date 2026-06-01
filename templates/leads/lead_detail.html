@@ -201,19 +201,6 @@
                 <div class="d-flex align-items-center gap-2">
                   {% if call.duration %}<span style="font-size:11px;color:#94A3B8;">{{ call.duration }}s</span>{% endif %}
                   <span style="font-size:11px;color:#94A3B8;">{{ call.call_date|date:"d M Y, g:i A" }}</span>
-                  {% if call.recording_url %}
-                  <a href="{{ call.recording_url }}" target="_blank"
-                     class="icon-btn" title="Play Recording"
-                     style="width:26px;height:26px;font-size:13px;color:var(--brand-green);">
-                    <i class="bi bi-play-circle"></i>
-                  </a>
-                  {% elif call.recording %}
-                  <a href="{{ call.recording.url }}" target="_blank"
-                     class="icon-btn" title="Play Recording"
-                     style="width:26px;height:26px;font-size:13px;color:var(--brand-green);">
-                    <i class="bi bi-play-circle"></i>
-                  </a>
-                  {% endif %}
                 </div>
               </div>
               {% if call.remarks %}<p style="font-size:13px;color:#475569;margin-top:6px;line-height:1.6;">{{ call.remarks }}</p>{% endif %}
