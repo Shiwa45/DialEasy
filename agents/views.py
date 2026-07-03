@@ -34,47 +34,67 @@ def is_admin(user):
 @user_passes_test(is_admin)
 def agent_list(request):
     """Display all agents with their basic stats"""
-    
+
     # Scope to this tenant's non-admin users only.
     # Exclude role='admin' so the tenant admin doesn't see themselves in the list.
-    tenant_agent_ids = AgentProfile.objects.exclude(role='admin').values_list('user_id', flat=True)
-    agents = User.objects.filter(
+    tenant_agent_ids = list(
+        AgentProfile.objects.exclude(role='admin').values_list('user_id', flat=True)
+    )
+
+    agents_qs = User.objects.filter(
         id__in=tenant_agent_ids,
         is_active=True,
-    ).prefetch_related(
-        'assigned_leads', 'call_logs', 'follow_ups', 'agent_profile'
-    ).annotate(
-        total_leads=Count('assigned_leads', distinct=True),
-        total_calls=Count('call_logs', distinct=True),
-        converted_leads=Count('assigned_leads', filter=Q(assigned_leads__status='converted'), distinct=True),
-        pending_follow_ups=Count('follow_ups', filter=Q(follow_ups__is_completed=False), distinct=True)
-    ).order_by('-date_joined')
-    
-    # Get today's call counts and calculate conversion rates
-    today = timezone.now().date()
-    for agent in agents:
-        agent.today_calls = CallLog.objects.filter(
-            agent=agent, 
-            call_date__date=today
-        ).count()
-        
-        # Calculate conversion rate
-        if agent.total_leads > 0:
-            agent.conversion_rate = round((agent.converted_leads / agent.total_leads) * 100, 2)
-        else:
-            agent.conversion_rate = 0
-    
-    # Pagination
-    paginator = Paginator(agents, 12)
+    ).select_related('agent_profile').order_by('-date_joined')
+
+    # Paginate FIRST, then compute per-agent stats only for the visible page.
+    # (Previously this annotated four Count(distinct) across three multi-valued
+    #  relations in one query — a combinatorial JOIN explosion that timed the
+    #  gunicorn worker out → 502 once the tenant had enough call logs.)
+    paginator = Paginator(agents_qs, 12)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
-    
-    # Summary statistics
-    total_agents = agents.count()
-    total_leads_assigned = sum(agent.total_leads for agent in agents)
-    total_calls_made = sum(agent.total_calls for agent in agents)
-    total_conversions = sum(agent.converted_leads for agent in agents)
-    
+
+    today = timezone.now().date()
+    page_ids = [a.id for a in page_obj]
+
+    def _grouped(qs, key):
+        return {row[key]: row['c'] for row in qs}
+
+    leads_by_agent = _grouped(
+        Lead.objects.filter(assigned_agent_id__in=page_ids)
+            .values('assigned_agent').annotate(c=Count('id')), 'assigned_agent')
+    conv_by_agent = _grouped(
+        Lead.objects.filter(assigned_agent_id__in=page_ids, status='converted')
+            .values('assigned_agent').annotate(c=Count('id')), 'assigned_agent')
+    calls_by_agent = _grouped(
+        CallLog.objects.filter(agent_id__in=page_ids)
+            .values('agent').annotate(c=Count('id')), 'agent')
+    today_calls_by_agent = _grouped(
+        CallLog.objects.filter(agent_id__in=page_ids, call_date__date=today)
+            .values('agent').annotate(c=Count('id')), 'agent')
+    pending_fu_by_agent = _grouped(
+        FollowUp.objects.filter(agent_id__in=page_ids, is_completed=False)
+            .values('agent').annotate(c=Count('id')), 'agent')
+
+    for agent in page_obj:
+        agent.total_leads = leads_by_agent.get(agent.id, 0)
+        agent.converted_leads = conv_by_agent.get(agent.id, 0)
+        agent.total_calls = calls_by_agent.get(agent.id, 0)
+        agent.today_calls = today_calls_by_agent.get(agent.id, 0)
+        agent.pending_follow_ups = pending_fu_by_agent.get(agent.id, 0)
+        agent.conversion_rate = (
+            round((agent.converted_leads / agent.total_leads) * 100, 2)
+            if agent.total_leads > 0 else 0
+        )
+
+    # Summary totals across ALL tenant agents — each a single cheap COUNT.
+    total_agents = len(tenant_agent_ids)
+    total_leads_assigned = Lead.objects.filter(assigned_agent_id__in=tenant_agent_ids).count()
+    total_calls_made = CallLog.objects.filter(agent_id__in=tenant_agent_ids).count()
+    total_conversions = Lead.objects.filter(
+        assigned_agent_id__in=tenant_agent_ids, status='converted'
+    ).count()
+
     context = {
         'page_obj': page_obj,
         'total_agents': total_agents,
@@ -83,7 +103,7 @@ def agent_list(request):
         'total_conversions': total_conversions,
         'avg_conversion_rate': round(total_conversions / total_leads_assigned * 100, 2) if total_leads_assigned > 0 else 0,
     }
-    
+
     return render(request, 'agents/agent_list.html', context)
 
 
